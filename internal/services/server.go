@@ -18,8 +18,12 @@ func NewServer(db *sql.DB) *Server {
 func (s *Server) Start() {
 	fmt.Println("Successfully connected to the database!")
 	log.Println("Starting server on :8080")
-
+	s.RegisterHandler()
 	if err := http.ListenAndServe(":8080", nil); err != nil {
 		log.Fatalf("Unable start server: %v\n", err)
 	}
+}
+
+func (s *Server) RegisterHandler() {
+	http.HandleFunc("/registration", s.Registrations)
 }
