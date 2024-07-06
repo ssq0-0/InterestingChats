@@ -25,5 +25,9 @@ func (s *Server) Start() {
 }
 
 func (s *Server) RegisterHandler() {
+	// http.HandleFunc("/", s.MainPage)
 	http.HandleFunc("/registration", s.Registrations)
+	http.HandleFunc("/login", s.Login)
+	http.HandleFunc("/updateAccessToken", s.UpdateAccessToken)
+	http.HandleFunc("/refresh_updateTokens", s.RefreshAccessToken)
 }
