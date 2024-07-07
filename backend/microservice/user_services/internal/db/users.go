@@ -1,6 +1,7 @@
 package db
 
 import (
+	"InterestingChats/backend/user_services/internal/models"
 	"InterestingChats/backend/user_services/internal/utils"
 	"context"
 	"database/sql"
@@ -10,17 +11,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-type BaseUser struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-}
-
-type User struct {
-	ID       int    `json:"id"`
-	Username string `json:"username"`
-	BaseUser
-}
-
 type UserService struct {
 	Db *sql.DB
 }
@@ -29,7 +19,7 @@ func NewUserService(db *sql.DB) *UserService {
 	return &UserService{Db: db}
 }
 
-func (us *UserService) CreateNewUser(ctx context.Context, user *User) (string, string, error) {
+func (us *UserService) CreateNewUser(ctx context.Context, user models.User) (string, string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
 	defer cancel()
 
@@ -52,7 +42,7 @@ func (us *UserService) CreateNewUser(ctx context.Context, user *User) (string, s
 	return accessToken, refreshToken, nil
 }
 
-func (us *UserService) LoginData(ctx context.Context, user *User) (bool, string, string, error) {
+func (us *UserService) LoginData(ctx context.Context, user models.User) (bool, string, string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 

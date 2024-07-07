@@ -2,7 +2,7 @@ package server
 
 import (
 	"InterestingChats/backend/user_services/internal/handlers"
-	"database/sql"
+	// "database/sql"
 	"fmt"
 	"log"
 	"net/http"
@@ -12,15 +12,13 @@ import (
 
 type Server struct {
 	rMux    *mux.Router
-	Db      *sql.DB
 	Handler *handlers.Handler
 }
 
-func NewServer(db *sql.DB) *Server {
-	handler := handlers.NewHandler(db)
+func NewServer() *Server {
+	handler := handlers.NewHandler()
 	return &Server{
 		rMux:    mux.NewRouter(),
-		Db:      db,
 		Handler: handler,
 	}
 }
@@ -36,7 +34,5 @@ func (s *Server) Start() {
 
 func (s *Server) RegisterHandler() {
 	s.rMux.HandleFunc("/registration", s.Handler.Registrations).Methods("POST")
-	s.rMux.HandleFunc("/login", s.Handler.Login).Methods("POST")
-	s.rMux.HandleFunc("/updateToken", s.Handler.UpdateAccessToken).Methods("POST")
 	fmt.Println("Continue...")
 }
