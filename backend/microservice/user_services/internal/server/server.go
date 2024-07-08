@@ -2,7 +2,6 @@ package server
 
 import (
 	"InterestingChats/backend/user_services/internal/handlers"
-	// "database/sql"
 	"fmt"
 	"log"
 	"net/http"
@@ -34,5 +33,6 @@ func (s *Server) Start() {
 
 func (s *Server) RegisterHandler() {
 	s.rMux.HandleFunc("/registration", s.Handler.Registrations).Methods("POST")
+	s.rMux.HandleFunc("/login", s.Handler.Login).Methods("POST")
 	fmt.Println("Continue...")
 }
