@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"fmt"
 	"time"
-	// "golang.org/x/crypto/bcrypt"
 )
 
 type UserService struct {
@@ -32,7 +31,7 @@ func (us *UserService) CreateNewUser(ctx context.Context, user models.User) erro
 	}
 
 	insertQuery := "INSERT INTO users(username, email, password) VALUES ($1, $2, $3) RETURNING id"
-	err = us.Db.QueryRowContext(ctx, insertQuery, user.Username, user.Email, user.HashPasword).Scan(&user.ID)
+	err = us.Db.QueryRowContext(ctx, insertQuery, user.Username, user.Email, user.Pasword).Scan(&user.ID)
 	if err != nil {
 		return fmt.Errorf("cloud not execute query: %v", err)
 	}
@@ -40,51 +39,16 @@ func (us *UserService) CreateNewUser(ctx context.Context, user models.User) erro
 	return nil
 }
 
-// func (us *UserService) LoginData(ctx context.Context, user *User) (bool, string, string, error) {
-// 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-// 	defer cancel()
+func (us *UserService) LoginData(ctx context.Context, user models.User) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
 
-// 	query := "SELECT password FROM users WHERE email = $1"
-// 	var storedPassword string
-// 	err := us.Db.QueryRowContext(ctx, query, user.Email).Scan(&storedPassword)
-// 	if err != nil {
-// 		if err == sql.ErrNoRows {
-// 			return false, "", "", nil
-// 		}
-// 		return false, "", "", fmt.Errorf("incorrect email or password")
-// 	}
+	selectQuery := "SELECT password FROM users WHERE email = $1"
+	var DBPassword string
+	err := us.Db.QueryRowContext(ctx, selectQuery, user.Email).Scan(&DBPassword)
+	if err != nil {
+		return "", fmt.Errorf("user with email %s not found: %v", user.Email, err)
+	}
 
-// 	if err := bcrypt.CompareHashAndPassword([]byte(storedPassword), []byte(user.Password)); err != nil {
-// 		return false, "", "", fmt.Errorf("incorrect email or password")
-// 	}
-
-// 	accessToken, refreshToken, err := utils.GenerateJWT(user.Username)
-// 	if err != nil {
-// 		return false, "", "", err
-// 	}
-
-// 	updateTokenQuery := "UPDATE users SET token = $1 WHERE email = $2"
-// 	_, err = us.Db.ExecContext(ctx, updateTokenQuery, refreshToken, user.Email)
-// 	if err != nil {
-// 		return false, "", "", fmt.Errorf("incorrect email or password")
-// 	}
-
-// 	return false, accessToken, refreshToken, nil
-// }
-
-// func (us *UserService) CheckToken(ctx context.Context, token string) (bool, error) {
-// 	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
-// 	defer cancel()
-
-// 	query := "SELECT token FROM users WHERE token = $1"
-// 	var rtoken string
-// 	err := us.Db.QueryRowContext(ctx, query, token).Scan(&rtoken)
-// 	if err != nil {
-// 		if err == sql.ErrNoRows {
-// 			return false, nil
-// 		}
-// 		return false, fmt.Errorf("could not execute query: %v", err)
-// 	}
-
-// 	return true, nil
-// }
+	return DBPassword, nil
+}
