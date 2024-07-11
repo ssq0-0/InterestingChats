@@ -2,7 +2,6 @@ package server
 
 import (
 	"InterestingChats/backend/user_services/internal/handlers"
-	"fmt"
 	"log"
 	"net/http"
 
@@ -24,7 +23,7 @@ func NewServer() *Server {
 
 func (s *Server) Start() {
 	s.RegisterHandler()
-	fmt.Println("Successfully connected to the database!")
+	log.Println("Successfully connected to the database!")
 	log.Println("Starting server on :8001")
 	if err := http.ListenAndServe(":8001", s.rMux); err != nil {
 		log.Fatalf("Unable start server: %v\n", err)
@@ -34,5 +33,6 @@ func (s *Server) Start() {
 func (s *Server) RegisterHandler() {
 	s.rMux.HandleFunc("/registration", s.Handler.Registrations).Methods("POST")
 	s.rMux.HandleFunc("/login", s.Handler.Login).Methods("POST")
-	fmt.Println("Continue...")
+	s.rMux.HandleFunc("/getTokens", s.Handler.GetTokens).Methods("GET")
+	log.Println("Continue...")
 }
