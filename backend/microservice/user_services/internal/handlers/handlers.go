@@ -3,12 +3,10 @@ package handlers
 import (
 	"InterestingChats/backend/user_services/internal/models"
 	"InterestingChats/backend/user_services/internal/utils"
-	"bytes"
 	"fmt"
 	"log"
 
 	"encoding/json"
-	"io/ioutil"
 	"net/http"
 
 	"golang.org/x/crypto/bcrypt"
@@ -34,7 +32,9 @@ func (h *Handler) Registrations(w http.ResponseWriter, r *http.Request) {
 		log.Println("Problems with generate password")
 		return
 	}
-
+	password := string(hashPassword)
+	log.Println(hashPassword)
+	log.Println(password)
 	accessToken, refreshToken, err := utils.GenerateJWT(u.Username)
 	if err != nil {
 		http.Error(w, "Problems with generate JWT", http.StatusBadRequest)
@@ -64,7 +64,7 @@ func (h *Handler) Registrations(w http.ResponseWriter, r *http.Request) {
 	data := map[string]interface{}{
 		"username": u.Username,
 		"email":    u.Email,
-		"password": hashPassword,
+		"password": password,
 	}
 	targetDB := "http://localhost:8002/registration"
 	body, statusCode, err := sendRequest("POST", targetDB, data)
@@ -108,6 +108,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		log.Println("Failed to login:", err)
 		return
 	}
+	log.Println("DB Response Body:", string(body))
 	if statusCode != http.StatusAccepted {
 		http.Error(w, string(body), statusCode)
 		return
@@ -190,37 +191,22 @@ func (h *Handler) GetTokens(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(tokens)
 }
 
-func sendRequest(method, url string, data interface{}) ([]byte, int, error) {
-	var jsonReqData []byte
-	var err error
-	if data != nil {
-		jsonReqData, err = json.Marshal(data)
-		if err != nil {
-			log.Println("Failed to serialize data.")
-			return nil, http.StatusInternalServerError, fmt.Errorf("failed to serialize data: %w", err)
-		}
+func (h *Handler) CheckTokens(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		log.Println("failed get token from url")
+		http.Error(w, "failed get token from url", http.StatusBadRequest)
+		return
 	}
 
-	req, err := http.NewRequest(method, url, bytes.NewBuffer(jsonReqData))
+	username, err := utils.ValidateJWT(token)
 	if err != nil {
-		log.Println("Failed to create request.")
-		return nil, http.StatusInternalServerError, fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Println("Failed to send request.")
-		return nil, http.StatusInternalServerError, fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Println("Failed to read response.")
-		return nil, http.StatusInternalServerError, fmt.Errorf("failed to read response: %w", err)
+		log.Printf("incorrect token: %v", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
-	return body, resp.StatusCode, nil
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(username)
 }
