@@ -1,6 +1,8 @@
 package server
 
 import (
+	"InterestingChats/backend/microservice/db/internal/db"
+	chat "InterestingChats/backend/microservice/db/internal/handlers/chat_handlers"
 	"InterestingChats/backend/microservice/db/internal/handlers/user"
 	"database/sql"
 	"log"
@@ -10,17 +12,21 @@ import (
 )
 
 type Server struct {
-	rMux    *mux.Router
-	Db      *sql.DB
-	Handler *user.Handler
+	rMux        *mux.Router
+	Db          *sql.DB
+	UserHandler *user.UserHandler
+	ChatHandler *chat.ChatHandler
 }
 
-func NewServer(db *sql.DB) *Server {
-	handler := user.NewHandler(db)
+func NewServer(DB *sql.DB) *Server {
+	UserHandler := user.NewHandler(DB)
+	chatService := db.NewChatService(DB)
+	chatHandler := chat.NewChatHandler(chatService)
 	return &Server{
-		rMux:    mux.NewRouter(),
-		Db:      db,
-		Handler: handler,
+		rMux:        mux.NewRouter(),
+		Db:          DB,
+		UserHandler: UserHandler,
+		ChatHandler: chatHandler,
 	}
 }
 
@@ -34,7 +40,9 @@ func (s *Server) Start() {
 }
 
 func (s *Server) RegisterHandler() {
-	s.rMux.HandleFunc("/registration", s.Handler.Registrations).Methods("POST")
-	s.rMux.HandleFunc("/login", s.Handler.Login).Methods("POST")
+	s.rMux.HandleFunc("/registration", s.UserHandler.Registrations).Methods("POST")
+	s.rMux.HandleFunc("/login", s.UserHandler.Login).Methods("POST")
+	s.rMux.HandleFunc("/getChat", s.ChatHandler.GetChat).Methods("GET")
+	s.rMux.HandleFunc("/createChat", s.ChatHandler.CreateChat).Methods("POST")
 	log.Println("Continue...")
 }
