@@ -34,5 +34,6 @@ func (s *Server) RegisterHandler() {
 	s.rMux.HandleFunc("/registration", s.Handler.Registrations).Methods("POST")
 	s.rMux.HandleFunc("/login", s.Handler.Login).Methods("POST")
 	s.rMux.HandleFunc("/getTokens", s.Handler.GetTokens).Methods("GET")
+	s.rMux.HandleFunc("/checkToken", s.Handler.CheckTokens).Methods("GET")
 	log.Println("Continue...")
 }
