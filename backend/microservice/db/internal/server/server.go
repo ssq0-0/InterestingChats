@@ -44,5 +44,8 @@ func (s *Server) RegisterHandler() {
 	s.rMux.HandleFunc("/login", s.UserHandler.Login).Methods("POST")
 	s.rMux.HandleFunc("/getChat", s.ChatHandler.GetChat).Methods("GET")
 	s.rMux.HandleFunc("/createChat", s.ChatHandler.CreateChat).Methods("POST")
+	s.rMux.HandleFunc("/deleteChat", s.ChatHandler.DeleteChat).Methods("DELETE")
+	s.rMux.HandleFunc("/deleteUser", s.ChatHandler.DeleteMember).Methods("DELETE")
+	s.rMux.HandleFunc("/addMembers", s.ChatHandler.AddMembers).Methods("POST")
 	log.Println("Continue...")
 }
