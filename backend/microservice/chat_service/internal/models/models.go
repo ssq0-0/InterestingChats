@@ -26,11 +26,16 @@ type Message struct {
 }
 
 type Chat struct {
-	ID        int    `json:"id"`
-	ChatName  string `json:"chat_name"`
-	Members   map[int]User
-	Messages  []Message
+	ID        int                      `json:"id"`
+	ChatName  string                   `json:"chat_name"`
+	Members   map[int]User             `json:"members"`
+	Messages  []Message                `json:"messages"`
 	Clients   map[*websocket.Conn]bool `json:"-"`
 	Broadcast chan Message             `json:"-"`
 	Mu        *sync.Mutex              `json:"-"`
+}
+
+type AddMemberRequest struct {
+	UserID int `json:"user_id"`
+	ChatID int `json:"chat_id"`
 }
