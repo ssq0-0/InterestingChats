@@ -3,7 +3,6 @@ package main
 import (
 	"InterestingChats/backend/microservice/db/internal/db"
 	"InterestingChats/backend/microservice/db/internal/server"
-	"fmt"
 	"log"
 	"os"
 )
@@ -11,7 +10,8 @@ import (
 func main() {
 	args := os.Args
 	if len(args) < 2 {
-		fmt.Println("Write filepath!")
+		log.Println("Write filepath!")
+		return
 	}
 
 	database, err := db.Connect(args[1])

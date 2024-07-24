@@ -66,7 +66,8 @@ func Connect(filePath string) (*sql.DB, error) {
 
 	err = db.Ping()
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("can't ping database: %v", err)
+
 	}
 	return db, nil
 }
