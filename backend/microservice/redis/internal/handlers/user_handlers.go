@@ -4,7 +4,7 @@ import (
 	"InterestingChats/backend/microservice/redis/internal/models"
 	"InterestingChats/backend/microservice/redis/internal/rdb"
 	"encoding/json"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 )
@@ -39,7 +39,7 @@ func (uh *UserHandler) GetUsersTokens(w http.ResponseWriter, r *http.Request) {
 
 func (uh *UserHandler) SetTokens(w http.ResponseWriter, r *http.Request) {
 	var userTokens map[string]models.UserTokens
-	body, err := ioutil.ReadAll(r.Body)
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "Failed to read request body", http.StatusBadRequest)
 		log.Println("Failed to read request body:", err)
