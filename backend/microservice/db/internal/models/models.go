@@ -17,8 +17,13 @@ type Message struct {
 }
 
 type Chat struct {
-	ID       int          `json:"id"`
+	ID       int          `json:"id,omitempty"`
 	ChatName string       `json:"chat_name"`
 	Members  map[int]User `json:"members"`
 	Messages []Message    `json:"messages"`
+}
+
+type AddMemberRequest struct {
+	UserID int `json:"user_id"`
+	ChatID int `json:"chat_id"`
 }
