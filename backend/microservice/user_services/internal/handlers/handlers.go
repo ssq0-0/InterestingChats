@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"InterestingChats/backend/user_services/internal/consts"
 	"InterestingChats/backend/user_services/internal/models"
 	"InterestingChats/backend/user_services/internal/utils"
 	"fmt"
@@ -32,9 +33,7 @@ func (h *Handler) Registrations(w http.ResponseWriter, r *http.Request) {
 		log.Println("Problems with generate password")
 		return
 	}
-	password := string(hashPassword)
-	log.Println(hashPassword)
-	log.Println(password)
+
 	accessToken, refreshToken, err := utils.GenerateJWT(u.Username)
 	if err != nil {
 		http.Error(w, "Problems with generate JWT", http.StatusBadRequest)
@@ -51,8 +50,7 @@ func (h *Handler) Registrations(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	targetRedis := "http://localhost:8003/setToken"
-	redisBody, statusCodeByRedis, err := sendRequest("POST", targetRedis, userTokens)
+	redisBody, statusCodeByRedis, err := utils.SendRequest(consts.POST_Method, consts.Redis_SetToken, userTokens)
 	if err != nil || statusCodeByRedis != http.StatusOK {
 		http.Error(w, "Failed to store tokens in Redis.", http.StatusInternalServerError)
 		log.Println("Error:", err)
@@ -64,13 +62,17 @@ func (h *Handler) Registrations(w http.ResponseWriter, r *http.Request) {
 	data := map[string]interface{}{
 		"username": u.Username,
 		"email":    u.Email,
-		"password": password,
+		"password": string(hashPassword),
 	}
-	targetDB := "http://localhost:8002/registration"
-	body, statusCode, err := sendRequest("POST", targetDB, data)
+	body, statusCode, err := utils.SendRequest(consts.POST_Method, consts.DB_Registration, data)
 	if err != nil {
 		http.Error(w, "Failed to create user in database", statusCode)
 		log.Println("Failed to create user in database")
+		return
+	}
+	if statusCode != http.StatusOK {
+		http.Error(w, "err.Error()", statusCode)
+		log.Printf("error: %v", statusCode)
 		return
 	}
 
@@ -101,8 +103,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		"password": u.Password,
 	}
 
-	targetDB := "http://localhost:8002/login"
-	body, statusCode, err := sendRequest("POST", targetDB, data)
+	body, statusCode, err := utils.SendRequest(consts.POST_Method, consts.DB_Login, data)
 	if err != nil {
 		http.Error(w, "Failed to login.", statusCode)
 		log.Println("Failed to login:", err)
@@ -130,8 +131,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	targetRedis := "http://localhost:8003/setToken"
-	redisBody, statusCodeByRedis, err := sendRequest("POST", targetRedis, userTokens)
+	redisBody, statusCodeByRedis, err := utils.SendRequest(consts.POST_Method, consts.Redis_SetToken, userTokens)
 	if err != nil {
 		http.Error(w, "Failed to store tokens in Redis.", http.StatusInternalServerError)
 		log.Println("Failed to store tokens in Redis:", err)
@@ -164,8 +164,7 @@ func (h *Handler) GetTokens(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	target := fmt.Sprintf("http://localhost:8003/user?email=%s", email)
-	redisResponse, statusCode, err := sendRequest("GET", target, nil)
+	redisResponse, statusCode, err := utils.SendRequest(consts.GET_Method, fmt.Sprintf(consts.Redis_GetToken, email), nil)
 	if err != nil {
 		http.Error(w, "Failed get tokens.", statusCode)
 		log.Println("Failed to get tokens:", err)
@@ -199,7 +198,7 @@ func (h *Handler) CheckTokens(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	username, err := utils.ValidateJWT(token)
+	email, err := utils.ValidateJWT(token)
 	if err != nil {
 		log.Printf("incorrect token: %v", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -208,5 +207,5 @@ func (h *Handler) CheckTokens(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(username)
+	json.NewEncoder(w).Encode(email)
 }
