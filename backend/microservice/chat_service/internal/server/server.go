@@ -43,4 +43,8 @@ func (s *Server) Start() {
 func (s *Server) Registerhandlers() {
 	s.RMux.HandleFunc("/ws", s.GetChatHistory).Methods("GET")
 	s.RMux.HandleFunc("/wsOpen", s.OpenWS).Methods("GET")
+	s.RMux.HandleFunc("/createChat", s.CreateChat).Methods("POST")
+	s.RMux.HandleFunc("/deleteChat", s.DeleteChat).Methods("DELETE")
+	s.RMux.HandleFunc("/addMember", s.AddMember).Methods("POST")
+	s.RMux.HandleFunc("/deleteMember", s.DeleteMember).Methods("DELETE")
 }
