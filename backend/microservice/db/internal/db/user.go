@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"time"
 )
 
@@ -31,9 +32,9 @@ func (us *UserService) CreateNewUser(ctx context.Context, user models.User) erro
 	}
 
 	insertQuery := "INSERT INTO users(username, email, password) VALUES ($1, $2, $3) RETURNING id"
-	err = us.Db.QueryRowContext(ctx, insertQuery, user.Username, user.Email, user.Pasword).Scan(&user.ID)
+	err = us.Db.QueryRowContext(ctx, insertQuery, user.Username, user.Email, user.Password).Scan(&user.ID)
 	if err != nil {
-		return fmt.Errorf("cloud not execute query: %v", err)
+		return fmt.Errorf("could not execute query: %v", err)
 	}
 
 	return nil
@@ -51,4 +52,17 @@ func (us *UserService) LoginData(ctx context.Context, user models.User) (string,
 	}
 
 	return DBPassword, nil
+}
+
+func (us *UserService) CheckUser(userID int) (bool, error) {
+	var exists bool
+	err := us.Db.QueryRowContext(context.Background(), "SELECT EXISTS(SELECT 1 FROM users WHERE id=$1)", userID).Scan(&exists)
+	if err != nil {
+		log.Printf("error transaction: %v", err)
+		return false, err
+	}
+	if !exists {
+		return false, fmt.Errorf("user not found")
+	}
+	return true, nil
 }

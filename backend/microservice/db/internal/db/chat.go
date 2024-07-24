@@ -15,9 +15,12 @@ type ChatService struct {
 	Db *sql.DB
 }
 
-func NewChatService(db *sql.DB) *ChatService {
+func NewChatService(dbConnection *sql.DB) *ChatService {
+	if dbConnection == nil {
+		log.Fatal("dbConnection is nil")
+	}
 	return &ChatService{
-		Db: db,
+		Db: dbConnection,
 	}
 }
 
@@ -32,8 +35,10 @@ func (cs *ChatService) GetChatInfo(chatName string) (*models.Chat, error) {
 	}
 
 	defer func() {
-		if err != nil {
-			tx.Rollback()
+		if p := recover(); p != nil || err != nil {
+			if rbErr := tx.Rollback(); rbErr != nil {
+				log.Printf("failed to rollback: %v", err)
+			}
 		}
 	}()
 
@@ -90,45 +95,48 @@ func (cs *ChatService) GetChatInfo(chatName string) (*models.Chat, error) {
 
 }
 
-func (cs *ChatService) CreateChat(chat *models.Chat) error {
+func (cs *ChatService) CreateChat(chat *models.Chat) (int, error) {
 	tx, err := cs.Db.BeginTx(context.Background(), nil)
 	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
+		return 0, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
 	defer func() {
-		if err != nil {
-			tx.Rollback()
+		if p := recover(); p != nil || err != nil {
+			if rbErr := tx.Rollback(); rbErr != nil {
+				log.Printf("failed to rollback: %v", err)
+			}
 		}
 	}()
 
 	err = tx.QueryRowContext(context.Background(), "INSERT INTO chats(name, created_at) VALUES($1, $2) RETURNING id", chat.ChatName, time.Now()).Scan(&chat.ID)
 	if err != nil {
 		if pqErr, ok := err.(*pq.Error); ok && pqErr.Code == "23505" {
-			return fmt.Errorf("failed to create chat with: %s name(already exist.)", chat.ChatName)
+			return 0, fmt.Errorf("failed to create chat with: %s name(already exist.)", chat.ChatName)
 		}
-		return fmt.Errorf("failed insert into database(chat table): %w \n ", err)
+		return 0, fmt.Errorf("failed insert into database(chat table): %w \n ", err)
 	}
+	log.Printf("chat id: %d", chat.ID)
 
 	insertMemberStmt, err := tx.PrepareContext(context.Background(), "INSERT INTO chat_members(chat_id, user_id) VALUES($1, $2)")
 	if err != nil {
-		return fmt.Errorf("failed prepare insert into database(chat_members table): %w", err)
+		return 0, fmt.Errorf("failed prepare insert into database(chat_members table): %w", err)
 	}
 	defer insertMemberStmt.Close()
 
 	for _, user := range chat.Members {
 		_, err := insertMemberStmt.ExecContext(context.Background(), chat.ID, user.ID)
 		if err != nil {
-			return fmt.Errorf("failed to insert into database(chat_members table): %w", err)
+			return 0, fmt.Errorf("failed to insert into database(chat_members table): %w", err)
 		}
 	}
 
 	if err := tx.Commit(); err != nil {
 		log.Printf("failed to commit transaction: %v", err)
-		return fmt.Errorf("failed to commit transaction: %w", err)
+		return 0, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	return nil
+	return chat.ID, err
 }
 
 func (cs *ChatService) DeleteChat(chatID int) error {
@@ -137,7 +145,7 @@ func (cs *ChatService) DeleteChat(chatID int) error {
 		return fmt.Errorf("failed create transaction: %w", err)
 	}
 	defer func() {
-		if err != nil {
+		if p := recover(); p != nil || err != nil {
 			if rbErr := tx.Rollback(); rbErr != nil {
 				log.Printf("failed to rollback transaction: %v", rbErr)
 			}
@@ -157,19 +165,48 @@ func (cs *ChatService) DeleteChat(chatID int) error {
 	return nil
 }
 
-// Добавить проверку на существование юзера длч удаления из чата
+func (cs *ChatService) CheckAuthor(email string, chatID int) (bool, error) {
+	var result string
+	err := cs.Db.QueryRowContext(context.Background(), "SELECT u.email FROM chats c JOIN users u ON c.author_id = u.id WHERE c.id=$1", chatID).Scan(&result)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			log.Printf("no author found for chat id: %d", chatID)
+			return false, nil
+		}
+		log.Printf("failed exec from db: %v", err)
+		return false, err
+	}
+
+	if result != email {
+		log.Printf("email mismatch: expected %s, got %s", email, result)
+		return false, nil
+	}
+
+	return true, nil
+}
+
 func (cs *ChatService) DeleteMember(chatID, userID int) error {
 	tx, err := cs.Db.BeginTx(context.Background(), nil)
 	if err != nil {
 		return fmt.Errorf("failed create tx: %w", err)
 	}
 	defer func() {
-		if err != nil {
+		if p := recover(); p != nil || err != nil {
 			if rbErr := tx.Rollback(); rbErr != nil {
 				log.Printf("failed to rollback: %v", err)
 			}
 		}
 	}()
+
+	var exists bool
+	err = tx.QueryRowContext(context.Background(), "SELECT EXISTS(SELECT 1 FROM chat_members WHERE chat_id=$1 AND user_id=$2)", chatID, userID).Scan(&exists)
+	if err != nil {
+		return fmt.Errorf("failed to check if user exists in chat: %v", err)
+	}
+	if !exists {
+		log.Printf("user %d is not member of chat %d", userID, chatID)
+		return fmt.Errorf("user %d is not member of chat %d", userID, chatID)
+	}
 
 	_, err = tx.ExecContext(context.Background(), "DELETE FROM chat_members WHERE chat_id = $1 AND user_id=$2", chatID, userID)
 	if err != nil {
@@ -183,19 +220,28 @@ func (cs *ChatService) DeleteMember(chatID, userID int) error {
 	return nil
 }
 
-// Добавить проверку на существование юзера в чате
 func (cs *ChatService) AddMember(chatID, userID int) error {
 	tx, err := cs.Db.BeginTx(context.Background(), nil)
 	if err != nil {
 		return fmt.Errorf("failed to create transaction")
 	}
 	defer func() {
-		if err != nil {
+		if p := recover(); p != nil || err != nil {
 			if rbErr := tx.Rollback(); rbErr != nil {
 				log.Printf("failed to rollback: %v", err)
 			}
 		}
 	}()
+
+	var exists bool
+	err = tx.QueryRowContext(context.Background(), "SELECT EXISTS(SELECT 1 FROM chat_members WHERE chat_id=$1 AND user_id=$2)", chatID, userID).Scan(&exists)
+	if err != nil {
+		return err
+	}
+
+	if exists {
+		return fmt.Errorf("user %d already exists int chat %d", userID, chatID)
+	}
 
 	_, err = tx.ExecContext(context.Background(), "INSERT INTO chat_members(user_id, chat_id) VALUES($1, $2)", userID, chatID)
 	if err != nil {
