@@ -20,13 +20,13 @@ type Server struct {
 
 func NewServer(DB *sql.DB) *Server {
 	UserHandler := user.NewHandler(DB)
-	chatService := db.NewChatService(DB)
-	chatHandler := chat.NewChatHandler(chatService)
+	ChatService := db.NewChatService(DB)
+	ChatHandler := chat.NewChatHandler(ChatService)
 	return &Server{
 		rMux:        mux.NewRouter(),
 		Db:          DB,
 		UserHandler: UserHandler,
-		ChatHandler: chatHandler,
+		ChatHandler: ChatHandler,
 	}
 }
 
@@ -45,7 +45,9 @@ func (s *Server) RegisterHandler() {
 	s.rMux.HandleFunc("/getChat", s.ChatHandler.GetChat).Methods("GET")
 	s.rMux.HandleFunc("/createChat", s.ChatHandler.CreateChat).Methods("POST")
 	s.rMux.HandleFunc("/deleteChat", s.ChatHandler.DeleteChat).Methods("DELETE")
-	s.rMux.HandleFunc("/deleteUser", s.ChatHandler.DeleteMember).Methods("DELETE")
+	s.rMux.HandleFunc("/deleteMember", s.ChatHandler.DeleteMember).Methods("DELETE")
 	s.rMux.HandleFunc("/addMembers", s.ChatHandler.AddMembers).Methods("POST")
+	s.rMux.HandleFunc("/getAuthor", s.ChatHandler.GetAuthor).Methods("GET")
+	s.rMux.HandleFunc("/checkUser", s.UserHandler.CheckUser).Methods("GET")
 	log.Println("Continue...")
 }
