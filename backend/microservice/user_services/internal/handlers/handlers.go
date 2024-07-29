@@ -3,9 +3,9 @@ package handlers
 import (
 	"InterestingChats/backend/user_services/internal/consts"
 	"InterestingChats/backend/user_services/internal/models"
+	"InterestingChats/backend/user_services/internal/services"
 	"InterestingChats/backend/user_services/internal/utils"
 	"fmt"
-	"log"
 
 	"encoding/json"
 	"net/http"
@@ -20,192 +20,91 @@ func NewHandler() *Handler {
 }
 
 func (h *Handler) Registrations(w http.ResponseWriter, r *http.Request) {
-	var u models.User
-	if err := json.NewDecoder(r.Body).Decode(&u); err != nil {
-		http.Error(w, "Problems with decode data", http.StatusBadRequest)
-		log.Println("Problems with decode data")
-		return
-	}
-
-	hashPassword, err := bcrypt.GenerateFromPassword([]byte(u.Password), bcrypt.DefaultCost)
+	user, err := utils.ValidRegistrationData(r, 0)
 	if err != nil {
-		http.Error(w, "Problems with generate password", http.StatusBadRequest)
-		log.Println("Problems with generate password")
+		h.HandleError(w, http.StatusBadRequest, []string{err.Error()}, fmt.Sprintf("failed to decode JSON data: %v", err))
 		return
 	}
 
-	accessToken, refreshToken, err := utils.GenerateJWT(u.Username)
+	hashPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
 	if err != nil {
-		http.Error(w, "Problems with generate JWT", http.StatusBadRequest)
-		log.Println("Problems with generate JWT")
+		h.HandleError(w, http.StatusBadRequest, []string{"Failed hash password"}, fmt.Sprintf("failed to to hash password: %v", err))
 		return
 	}
+	user.Password = string(hashPassword)
 
-	userTokens := map[string]models.UserTokens{
-		u.Email: {
-			Tokens: models.Tokens{
-				AccessToken:  accessToken,
-				RefreshToken: refreshToken,
-			},
-		},
-	}
-
-	redisBody, statusCodeByRedis, err := utils.SendRequest(consts.POST_Method, consts.Redis_SetToken, userTokens)
-	if err != nil || statusCodeByRedis != http.StatusOK {
-		http.Error(w, "Failed to store tokens in Redis.", http.StatusInternalServerError)
-		log.Println("Error:", err)
-		return
-	}
-	log.Println("Status Code:", statusCodeByRedis)
-	log.Println("Response Body:", string(redisBody))
-
-	data := map[string]interface{}{
-		"username": u.Username,
-		"email":    u.Email,
-		"password": string(hashPassword),
-	}
-	body, statusCode, err := utils.SendRequest(consts.POST_Method, consts.DB_Registration, data)
+	data, errors, err := services.HandleUserRequest(consts.POST_Method, consts.DB_Registration, user, http.StatusCreated)
 	if err != nil {
-		http.Error(w, "Failed to create user in database", statusCode)
-		log.Println("Failed to create user in database")
-		return
-	}
-	if statusCode != http.StatusOK {
-		http.Error(w, "err.Error()", statusCode)
-		log.Printf("error: %v", statusCode)
+		h.HandleError(w, http.StatusBadRequest, errors, fmt.Sprintf("error method: %v", err))
 		return
 	}
 
-	response := map[string]string{
-		"message":      "Created new user!",
-		"username":     u.Username,
-		"accessToken":  accessToken,
-		"refreshToken": refreshToken,
-		"body":         string(body),
-	}
-
-	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(response)
+	h.SendRespond(w, http.StatusCreated, &models.Response{
+		Data:   data,
+		Errors: nil,
+	})
 }
 
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
-	var u models.User
-	if err := json.NewDecoder(r.Body).Decode(&u); err != nil {
-		http.Error(w, "Failed to parse json data", http.StatusBadRequest)
-		log.Println("Failed to parse json data:", err)
-		return
-	}
-
-	log.Println("Received login data:", u)
-
-	data := map[string]interface{}{
-		"email":    u.Email,
-		"password": u.Password,
-	}
-
-	body, statusCode, err := utils.SendRequest(consts.POST_Method, consts.DB_Login, data)
+	user, err := utils.ValidRegistrationData(r, 1)
 	if err != nil {
-		http.Error(w, "Failed to login.", statusCode)
-		log.Println("Failed to login:", err)
-		return
-	}
-	log.Println("DB Response Body:", string(body))
-	if statusCode != http.StatusAccepted {
-		http.Error(w, string(body), statusCode)
+		h.HandleError(w, http.StatusBadRequest, []string{fmt.Sprintf("Failed to recived user data: %v", err)}, fmt.Sprintf("failed decode user data: %v", err))
 		return
 	}
 
-	accessToken, refreshToken, err := utils.GenerateJWT(u.Email)
+	tokens, errors, err := services.HandleUserRequest(consts.POST_Method, consts.DB_Login, user, http.StatusOK)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		log.Println("Problems with generate JWT:", err)
+		h.HandleError(w, http.StatusBadRequest, errors, fmt.Sprintf("failed recived tokens:: %v", err))
 		return
 	}
 
-	userTokens := map[string]models.UserTokens{
-		u.Email: {
-			Tokens: models.Tokens{
-				AccessToken:  accessToken,
-				RefreshToken: refreshToken,
-			},
-		},
-	}
-
-	redisBody, statusCodeByRedis, err := utils.SendRequest(consts.POST_Method, consts.Redis_SetToken, userTokens)
-	if err != nil {
-		http.Error(w, "Failed to store tokens in Redis.", http.StatusInternalServerError)
-		log.Println("Failed to store tokens in Redis:", err)
-		return
-	}
-	if statusCode != http.StatusAccepted {
-		http.Error(w, string(body), statusCode)
-		log.Println("Login failed with status code:", statusCode)
-		return
-	}
-	response := map[string]string{
-		"body":         string(body),
-		"accessToken":  accessToken,
-		"refreshToken": refreshToken,
-	}
-
-	log.Println("Status Code:", statusCodeByRedis)
-	log.Println("Response Body:", string(redisBody))
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
-
+	h.SendRespond(w, http.StatusOK, &models.Response{
+		Errors: nil,
+		Data:   tokens,
+	})
 }
 
 func (h *Handler) GetTokens(w http.ResponseWriter, r *http.Request) {
 	email := r.URL.Query().Get("email")
 	if email == "" {
-		http.Error(w, "email not found", http.StatusBadRequest)
+		h.HandleError(w, http.StatusBadRequest, []string{"missing email in URL"}, "missing email in URL")
 		return
 	}
 
-	redisResponse, statusCode, err := utils.SendRequest(consts.GET_Method, fmt.Sprintf(consts.Redis_GetToken, email), nil)
+	redisResponse, statusCode, err := utils.ProxyRequest(consts.GET_Method, fmt.Sprintf(consts.Redis_GetToken, email), nil, http.StatusOK)
 	if err != nil {
-		http.Error(w, "Failed get tokens.", statusCode)
-		log.Println("Failed to get tokens:", err)
-		return
-	}
-
-	if statusCode != http.StatusOK {
-		http.Error(w, "Failed to get tokens.", statusCode)
-		log.Println("Unexpected status code:", statusCode)
+		h.HandleError(w, statusCode, []string{"Failed recived tokens"}, fmt.Sprintf("failed recived tokens from redis: %v", err))
 		return
 	}
 
 	var tokens models.Tokens
 	err = json.Unmarshal(redisResponse, &tokens)
 	if err != nil {
-		http.Error(w, "Failed to decode tokens.", http.StatusInternalServerError)
-		log.Println("Failed to decode tokens.")
+		h.HandleError(w, statusCode, []string{"Failed decode tokens"}, fmt.Sprintf("failed decode tokens from redis response: %v", err))
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(tokens)
+	h.SendRespond(w, http.StatusOK, &models.Response{
+		Errors: nil,
+		Data:   tokens,
+	})
 }
 
 func (h *Handler) CheckTokens(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
 	if token == "" {
-		log.Println("failed get token from url")
-		http.Error(w, "failed get token from url", http.StatusBadRequest)
+		h.HandleError(w, http.StatusBadRequest, []string{"missin token in url"}, "failed get token from url")
 		return
 	}
 
-	email, err := utils.ValidateJWT(token)
+	id, err := utils.ValidateJWT(token)
 	if err != nil {
-		log.Printf("incorrect token: %v", err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		h.HandleError(w, http.StatusBadRequest, []string{"incorrect token"}, fmt.Sprintf("incorrect token: %v", err))
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(email)
+	h.SendRespond(w, http.StatusOK, &models.Response{
+		Errors: nil,
+		Data:   id,
+	})
 }
