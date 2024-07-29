@@ -2,12 +2,13 @@ package user
 
 import (
 	"InterestingChats/backend/microservice/db/internal/db"
+	"InterestingChats/backend/microservice/db/internal/handlers"
 	"InterestingChats/backend/microservice/db/internal/models"
+	"InterestingChats/backend/microservice/db/internal/utils"
 	"database/sql"
 	"encoding/json"
-	"log"
+	"fmt"
 	"net/http"
-	"strconv"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -23,88 +24,79 @@ func NewHandler(db *sql.DB) *UserHandler {
 }
 
 func (h *UserHandler) Registrations(w http.ResponseWriter, r *http.Request) {
-	var u models.User
-	if err := json.NewDecoder(r.Body).Decode(&u); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		log.Println("Can't parse user data from request: ", err)
+	var user models.User
+	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
+		handlers.ErrorHandler(w, http.StatusBadRequest, []string{"Can't parse user data from request"}, fmt.Sprintf("Can't parse user data from request: %v", err))
 		return
 	}
 
 	userService := db.NewUserService(h.Db)
-	err := userService.CreateNewUser(r.Context(), u)
-	if err != nil {
-		/*
-			Figure out how to return not only StatusConfilct, but error by situation
-		*/
-		http.Error(w, err.Error(), http.StatusConflict)
-		log.Println("Can't exec user in database: ", err)
+	if userInfo, err := userService.CreateNewUser(r.Context(), user); err != nil {
+		handlers.ErrorHandler(w, http.StatusBadRequest, []string{"Can't exec user in database"}, fmt.Sprintf("Can't exec user in database: %v", err))
 		return
+
+	} else {
+		handlers.SendRespond(w, http.StatusCreated, &models.Response{
+			Errors: nil,
+			Data:   userInfo,
+		})
 	}
-	response := map[string]string{
-		"message": "User registered successfully",
-	}
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(response)
 }
 
 func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
-	var u models.User
-	if err := json.NewDecoder(r.Body).Decode(&u); err != nil {
-		log.Println("Error decoding user login data:", err)
-		http.Error(w, "Failed to decode user login data", http.StatusBadRequest)
+	var user models.User
+	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
+		handlers.ErrorHandler(w, http.StatusBadRequest, []string{"Failed to decode user login data"}, fmt.Sprintf("Error decoding user login data: %v", err))
 		return
 	}
 
 	userService := db.NewUserService(h.Db)
-	dbPassword, err := userService.LoginData(r.Context(), u)
+	dbUser, err := userService.LoginData(r.Context(), user)
 	if err != nil {
-		log.Println("Error fetching user data from database:", err)
-		http.Error(w, "Incorrect user data", http.StatusBadRequest)
+		handlers.ErrorHandler(w, http.StatusBadRequest, []string{"Error fetching user data from database"}, fmt.Sprintf("Error fetching user data from database: %v", err))
 		return
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(dbPassword), []byte(u.Password)); err != nil {
-		log.Println("Incorrect email or password:", err)
-		http.Error(w, "Incorrect email or password", http.StatusBadRequest)
+	if err := bcrypt.CompareHashAndPassword([]byte(dbUser.Password), []byte(user.Password)); err != nil {
+		handlers.ErrorHandler(w, http.StatusBadRequest, []string{"Incorrect email or password"}, fmt.Sprintf("Incorrect email or password: %v", err))
 		return
 	}
+	// interim solution, rewrite
+	dbUser.Password = ""
 
-	response := map[string]string{
-		"message": "Successful login!",
-	}
-	w.WriteHeader(http.StatusAccepted)
-	json.NewEncoder(w).Encode(response)
+	handlers.SendRespond(w, http.StatusOK, &models.Response{
+		Errors: nil,
+		Data:   dbUser,
+	})
 }
 
 func (h *UserHandler) CheckUser(w http.ResponseWriter, r *http.Request) {
 	userIDstr := r.URL.Query().Get("userID")
 	if userIDstr == "" {
-		log.Println("missing user id")
-		http.Error(w, "missing user id n request", http.StatusBadRequest)
+		handlers.ErrorHandler(w, http.StatusBadRequest, []string{"missing user id"}, "missing user id in request")
 		return
 	}
 
-	userIDint, err := strconv.Atoi(userIDstr)
-	if err != nil {
-		log.Printf("error in user service: %v", err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	var userID int
+	if err := utils.ConvertValue(userIDstr, &userID); err != nil {
+		handlers.ErrorHandler(w, http.StatusBadRequest, []string{"error in user service"}, fmt.Sprintf("error in user service: %v", err))
 		return
 	}
 
-	// срочно переделать на прокидывание сервиса в хендлер
+	// Change to flip to Handler
 	userService := db.NewUserService(h.Db)
-	accept, err := userService.CheckUser(userIDint)
+	accept, err := userService.CheckUser(userID)
 	if err != nil {
-		log.Printf("failed request: %v", err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		handlers.ErrorHandler(w, http.StatusBadRequest, []string{"failed request"}, fmt.Sprintf("failed request: %v", err))
 		return
 	}
-
 	if !accept {
-		log.Println("user not found")
-		http.Error(w, "user not found", http.StatusBadRequest)
+		handlers.ErrorHandler(w, http.StatusBadRequest, []string{"user not found"}, "user not found")
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
+	handlers.SendRespond(w, http.StatusOK, &models.Response{
+		Errors: nil,
+		Data:   userID,
+	})
 }

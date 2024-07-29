@@ -2,11 +2,13 @@ package handlers
 
 import (
 	"InterestingChats/backend/microservice/db/internal/db"
+	"InterestingChats/backend/microservice/db/internal/handlers"
 	"InterestingChats/backend/microservice/db/internal/models"
+	"InterestingChats/backend/microservice/db/internal/utils"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
-	"strconv"
 )
 
 type ChatHandler struct {
@@ -24,107 +26,97 @@ func NewChatHandler(chatService *db.ChatService) *ChatHandler {
 
 func (ch *ChatHandler) GetChat(w http.ResponseWriter, r *http.Request) {
 	chatName := r.URL.Query().Get("chatName")
-	log.Println(chatName)
-	chat, err := ch.ChatService.GetChatInfo(chatName)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		log.Println("Failed get info about chat", err)
+	if chatName == "" {
+		handlers.ErrorHandler(w, http.StatusBadRequest, []string{"Missing chat name in url"}, "Missing chat name in url")
 		return
 	}
-	log.Println(chat)
-	w.WriteHeader(http.StatusOK)
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(chat); err != nil {
-		http.Error(w, "error encode json", http.StatusInternalServerError)
-		log.Println("error encoding json for response", err)
+
+	chat, err := ch.ChatService.GetChatInfo(chatName)
+	if err != nil {
+		handlers.ErrorHandler(w, http.StatusBadRequest, []string{"Failed to get chat info"}, fmt.Sprintf("Failed to get chat info: %v", err))
+		return
 	}
+	handlers.SendRespond(w, http.StatusOK, chat)
 }
 
 func (ch *ChatHandler) CreateChat(w http.ResponseWriter, r *http.Request) {
 	var chat models.Chat
 	if err := json.NewDecoder(r.Body).Decode(&chat); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		log.Printf("failed decode json to chat: %v", err)
+		handlers.ErrorHandler(w, http.StatusBadRequest, []string{"Failed recived data"}, fmt.Sprintf("failed recived data: %v", err))
 		return
 	}
 
 	chatID, err := ch.ChatService.CreateChat(&chat)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		log.Printf("failed create chat: %v", err)
+		handlers.ErrorHandler(w, http.StatusBadRequest, []string{"Failed create chat"}, fmt.Sprintf("failed create chat: %v", err))
 		return
 	}
 	chat.ID = chatID
 
-	log.Printf("chat id in handler after func: %d. Func return: %d", chat.ID, chatID)
-	w.WriteHeader(http.StatusCreated)
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(chat); err != nil {
-		http.Error(w, "error encode json", http.StatusInternalServerError)
-		log.Println("error encoding json for response", err)
-	}
-	log.Printf("chat struct: %+v", chat)
+	handlers.SendRespond(w, http.StatusCreated, chat)
 }
 
 func (ch *ChatHandler) DeleteChat(w http.ResponseWriter, r *http.Request) {
 	chatIDStr := r.URL.Query().Get("chatID")
 	if chatIDStr == "" {
-		http.Error(w, "missing chat id in request", http.StatusBadGateway)
-		log.Printf("missing chat id in request")
+		handlers.ErrorHandler(w, http.StatusBadRequest, []string{"missing chat id in request"}, "missing chat id in request")
 		return
 	}
 
-	chatID, err := strconv.Atoi(chatIDStr)
-	if err != nil {
-		http.Error(w, "failed convet id to int value", http.StatusBadRequest)
-		log.Printf("failed convet id to int value: %v", err)
+	var chatID int
+	if err := utils.ConvertValue(chatIDStr, &chatID); err != nil {
+		handlers.ErrorHandler(w, http.StatusBadRequest, []string{"failed convert value"}, fmt.Sprintf("failed convert value: %v", err))
+		return
 	}
-	err = ch.ChatService.DeleteChat(chatID)
+	// ////
+	err := ch.ChatService.DeleteChat(chatID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		log.Printf("failed delete chat: %v", err)
+		handlers.ErrorHandler(w, http.StatusBadRequest, []string{"failed delete chat"}, fmt.Sprintf("failed delete chat: %v", err))
 		return
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	handlers.SendRespond(w, http.StatusNoContent, &models.Response{
+		Data:   nil,
+		Errors: nil,
+	})
 }
 
 func (ch *ChatHandler) DeleteMember(w http.ResponseWriter, r *http.Request) {
 	var deleteMember models.AddMemberRequest
 	if err := json.NewDecoder(r.Body).Decode(&deleteMember); err != nil {
-		log.Printf("error decoding from request body: %v", err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		handlers.ErrorHandler(w, http.StatusBadRequest, []string{"Failed recived data"}, fmt.Sprintf("failed recived data: %v", err))
 		return
 	}
 
 	err := ch.ChatService.DeleteMember(deleteMember.ChatID, deleteMember.UserID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		log.Printf("failed delete from db: %v", err)
+		handlers.ErrorHandler(w, http.StatusBadRequest, []string{"Failed delete member"}, fmt.Sprintf("Failed delete member: %v", err))
 		return
 	}
 
-	log.Println("user deleted from chat")
-	w.WriteHeader(http.StatusNoContent)
+	handlers.SendRespond(w, http.StatusNoContent, &models.Response{
+		Data:   "successful deleted user",
+		Errors: nil,
+	})
 }
 
 func (ch *ChatHandler) AddMembers(w http.ResponseWriter, r *http.Request) {
 	var addMember models.AddMemberRequest
 	if err := json.NewDecoder(r.Body).Decode(&addMember); err != nil {
-		log.Printf("error decode json to array models: %v", err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		handlers.ErrorHandler(w, http.StatusBadRequest, []string{"Failed recived data"}, fmt.Sprintf("failed recived data: %v", err))
 		return
 	}
 
 	err := ch.ChatService.AddMember(addMember.ChatID, addMember.UserID)
 	if err != nil {
-		log.Printf("failed operation: %v", err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		handlers.ErrorHandler(w, http.StatusBadRequest, []string{"failed operation"}, fmt.Sprintf("failed operation: %v", err))
 		return
 	}
 
-	log.Println("user add to chat")
-	w.WriteHeader(http.StatusAccepted)
+	handlers.SendRespond(w, http.StatusAccepted, &models.Response{
+		Data:   "succesfull added member",
+		Errors: nil,
+	})
 }
 
 func (ch *ChatHandler) GetAuthor(w http.ResponseWriter, r *http.Request) {
@@ -132,32 +124,34 @@ func (ch *ChatHandler) GetAuthor(w http.ResponseWriter, r *http.Request) {
 		log.Fatal("ChatService is nil")
 	}
 
-	userEmail := r.URL.Query().Get("email")
-	chatIDstr := r.URL.Query().Get("chatID")
-	if userEmail == "" || chatIDstr == "" {
+	userIDstr, chatIDstr := r.URL.Query().Get("userID"), r.URL.Query().Get("chatID")
+	if userIDstr == "" || chatIDstr == "" {
 		http.Error(w, "missing email or chat name", http.StatusBadRequest)
 		log.Printf("missing email or chat name")
 		return
 	}
 
-	chatIDint, err := strconv.Atoi(chatIDstr)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		log.Printf("failed conver chat id to int: %v", err)
+	var chatID, userID int
+	if err := utils.ConvertValue(chatIDstr, &chatID); err != nil {
+		handlers.ErrorHandler(w, http.StatusBadRequest, []string{"failed convert chat id value"}, fmt.Sprintf("failed convert value: %v", err))
+		return
+	}
+	if err := utils.ConvertValue(userIDstr, &userID); err != nil {
+		handlers.ErrorHandler(w, http.StatusBadRequest, []string{"failed convert user id value"}, fmt.Sprintf("failed convert value: %v", err))
 		return
 	}
 
-	accept, err := ch.ChatService.CheckAuthor(userEmail, chatIDint)
+	accept, err := ch.ChatService.CheckAuthor(userID, chatID)
 	if err != nil {
-		http.Error(w, "error checking author", http.StatusForbidden)
-		log.Printf("error checking author: %v", err)
+		handlers.ErrorHandler(w, http.StatusBadRequest, []string{"error checking author"}, fmt.Sprintf("error checking author: %v", err))
 		return
 	}
 	if !accept {
-		http.Error(w, "user is not the author", http.StatusForbidden)
-		log.Printf("user email: %s is not the author of chat %d", userEmail, chatIDint)
+		handlers.ErrorHandler(w, http.StatusForbidden, []string{"user is not the author"}, fmt.Sprintf("user email: %d is not the author of chat %d", userID, chatID))
 		return
 	}
-
-	w.WriteHeader(http.StatusOK)
+	handlers.SendRespond(w, http.StatusOK, &models.Response{
+		Data:   userID,
+		Errors: nil,
+	})
 }
