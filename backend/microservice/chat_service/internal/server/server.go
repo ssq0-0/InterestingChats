@@ -33,16 +33,17 @@ func NewServer() *Server {
 }
 
 func (s *Server) Start() {
-	s.Registerhandlers()
+	s.RegisterHandlers()
 	log.Println("Server start on 8004 port!")
 	if err := http.ListenAndServe(":8004", s.RMux); err != nil {
-		panic(err)
+		log.Fatalf("Could not start server: %v", err)
 	}
 }
 
-func (s *Server) Registerhandlers() {
+func (s *Server) RegisterHandlers() {
 	s.RMux.HandleFunc("/ws", s.GetChatHistory).Methods("GET")
 	s.RMux.HandleFunc("/wsOpen", s.OpenWS).Methods("GET")
+	s.RMux.HandleFunc("/getChat", s.GetChatHistory).Methods("GET")
 	s.RMux.HandleFunc("/createChat", s.CreateChat).Methods("POST")
 	s.RMux.HandleFunc("/deleteChat", s.DeleteChat).Methods("DELETE")
 	s.RMux.HandleFunc("/addMember", s.AddMember).Methods("POST")
