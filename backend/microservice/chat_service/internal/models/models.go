@@ -27,6 +27,7 @@ type Message struct {
 
 type Chat struct {
 	ID        int                      `json:"id"`
+	Creator   int                      `json:"creator"`
 	ChatName  string                   `json:"chat_name"`
 	Members   map[int]User             `json:"members"`
 	Messages  []Message                `json:"messages"`
@@ -35,7 +36,12 @@ type Chat struct {
 	Mu        *sync.Mutex              `json:"-"`
 }
 
-type AddMemberRequest struct {
+type MemberRequest struct {
 	UserID int `json:"user_id"`
 	ChatID int `json:"chat_id"`
+}
+
+type Response struct {
+	Errors []string    `json:"Errors"`
+	Data   interface{} `json:"Data"`
 }
