@@ -3,243 +3,144 @@ package server
 import (
 	"chat_service/internal/consts"
 	"chat_service/internal/models"
+	services "chat_service/internal/services/authService"
+	chatservice "chat_service/internal/services/chatService"
+	userservice "chat_service/internal/services/userService"
 	"chat_service/internal/utils"
-	"strconv"
 
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 )
 
 func (s *Server) GetChatHistory(w http.ResponseWriter, r *http.Request) {
 	chatName := r.URL.Query().Get("chatName")
 	if chatName == "" {
-		http.Error(w, "chatName is required", http.StatusBadRequest)
+		ErrorHandler(w, http.StatusBadRequest, []string{"chatName is required"}, "chatName is required")
 		return
 	}
 
-	body, statusCode, err := utils.ProxyRequest(consts.GET_Method, fmt.Sprintf(consts.DB_GetChatHistory, chatName), nil, http.StatusOK)
+	encodedChatName := url.QueryEscape(chatName)
+	body, _, err := utils.ProxyRequest(consts.GET_Method, fmt.Sprintf(consts.DB_GetChatHistory, encodedChatName), nil, http.StatusOK)
 	if err != nil {
-		log.Println("failed get info about chat", err)
-		http.Error(w, "failed get info about chat", http.StatusBadRequest)
-		return
-	}
-	if statusCode == http.StatusNotFound {
-		log.Println("chat not found")
-		http.Error(w, "chat not found", http.StatusBadRequest)
+		ErrorHandler(w, http.StatusBadRequest, []string{"failed get info about chat"}, fmt.Sprintf("failed get info about chat: %v", err))
 		return
 	}
 
-	chat := &models.Chat{}
-	if err := json.Unmarshal(body, chat); err != nil {
-		log.Println("failed to deserialize chat data", err)
-		http.Error(w, "failed to deserialize chat data", http.StatusInternalServerError)
+	var chatInfo models.Chat
+	if err := utils.ParseBody(body, &chatInfo); err != nil {
+		ErrorHandler(w, http.StatusBadRequest, []string{"failed to deserialize chat data"}, fmt.Sprintf("failed to deserialize chat data: %v", err))
 		return
 	}
 
-	log.Printf("Chat data: %+v\n", chat)
-	w.WriteHeader(http.StatusOK)
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(chat); err != nil {
-		http.Error(w, "error encode json", http.StatusInternalServerError)
-		log.Println("error encoding json for response", err)
-	}
+	SendRespond(w, http.StatusOK, &models.Response{
+		Data:   chatInfo,
+		Errors: nil,
+	})
 }
 
 func (s *Server) CreateChat(w http.ResponseWriter, r *http.Request) {
-	authToken := r.Header.Get("access_token")
-	// use email for "author chat"
-	_, err := utils.CheckToken(authToken)
-	if err != nil {
-		log.Printf("access rejected: %v", err)
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+	userID, err := userservice.UserVerification(r)
+	if err != nil || userID == 0 {
+		ErrorHandler(w, http.StatusBadRequest, []string{"access rejected"}, fmt.Sprintf("access rejected: %v", err))
 		return
 	}
 
-	chatInfo := &models.Chat{}
+	chatInfo := &models.Chat{Creator: userID}
 	if err := json.NewDecoder(r.Body).Decode(&chatInfo); err != nil {
-		log.Printf("error decoding request body: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		ErrorHandler(w, http.StatusBadRequest, []string{"error decoding request body"}, fmt.Sprintf("error decoding request body: %v", err))
 		return
 	}
 
 	body, statusCode, err := utils.ProxyRequest(consts.POST_Method, consts.DB_CreateChat, chatInfo, http.StatusCreated)
 	if err != nil {
-		log.Printf("failed to create chat: %v. StatusCode: %d", err, statusCode)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		ErrorHandler(w, statusCode, []string{"failed to create chat"}, fmt.Sprintf("failed to create chat: %v. StatusCode: %d", err, statusCode))
 		return
 	}
 
-	if err := json.Unmarshal(body, chatInfo); err != nil {
-		log.Printf("failed to deserialize chat data:%v. Chat data: %+v", err, body)
-		http.Error(w, "failed to deserialize chat data", http.StatusInternalServerError)
+	if err := utils.ParseBody(body, &chatInfo); err != nil {
+		ErrorHandler(w, http.StatusBadRequest, []string{"failed to deserialize chat data"}, fmt.Sprintf("failed to deserialize chat data: %v", err))
 		return
 	}
 
-	log.Println(chatInfo)
-	w.WriteHeader(http.StatusCreated)
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(chatInfo); err != nil {
-		log.Println("error encoding response:", err)
-		http.Error(w, "error encoding response", http.StatusInternalServerError)
-	}
+	SendRespond(w, http.StatusCreated, &models.Response{
+		Data:   chatInfo,
+		Errors: nil,
+	})
 }
 
 func (s *Server) DeleteChat(w http.ResponseWriter, r *http.Request) {
-	authToken := r.Header.Get("Authorization")
-	email, err := utils.CheckToken(authToken)
+	userID, err := userservice.UserVerification(r)
+	if err != nil || userID == 0 {
+		ErrorHandler(w, http.StatusBadRequest, []string{"access rejected"}, fmt.Sprintf("access rejected: %v", err))
+		return
+	}
+
+	chatID, err := chatservice.GetChatID(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
-		log.Printf("error check token: %v", err)
+		ErrorHandler(w, http.StatusBadRequest, []string{"failed get info about chat"}, fmt.Sprintf("failed get info about chat: %v", err))
 		return
 	}
 
-	chatIDstr := r.URL.Query().Get("chatID")
-	if chatIDstr == "" {
-		http.Error(w, "missing chat id", http.StatusBadRequest)
-		log.Printf("missing chat id")
-		return
-	}
-
-	chatIDint, err := strconv.Atoi(chatIDstr)
+	_, authorStatusCode, err := utils.ProxyRequest(consts.GET_Method, fmt.Sprintf(consts.DB_GetAuthor, userID, chatID), nil, http.StatusOK)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		log.Printf("error convert to int: %v", err)
+		ErrorHandler(w, authorStatusCode, []string{"failed get info about author"}, fmt.Sprintf("access foribem: %v, status code: %d", err, authorStatusCode))
 		return
 	}
 
-	_, authorStatusCode, err := utils.ProxyRequest(consts.GET_Method, fmt.Sprintf(consts.DB_GetAuthor, email, chatIDint), nil, http.StatusOK)
+	_, deleteStatusCode, err := utils.ProxyRequest(consts.DELETE_Method, fmt.Sprintf(consts.DB_DeleteChat, chatID), nil, http.StatusNoContent)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusForbidden)
-		log.Printf("access foribem: %v, status code: %d", err, authorStatusCode)
+		ErrorHandler(w, deleteStatusCode, []string{"failed delete chat"}, fmt.Sprintf("failed request: %v, statuscode: %d", err, deleteStatusCode))
 		return
 	}
 
-	_, deleteStatusCode, err := utils.ProxyRequest(consts.DELETE_Method, fmt.Sprintf(consts.DB_DeleteChat, chatIDstr), nil, http.StatusNoContent)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		log.Printf("failed request: %v, statuscode: %d", err, deleteStatusCode)
-		return
-	}
-
-	w.WriteHeader(http.StatusNoContent)
+	SendRespond(w, http.StatusNoContent, nil)
 }
 
 func (s *Server) AddMember(w http.ResponseWriter, r *http.Request) {
-	authToken := r.Header.Get("Authorization")
-	email, err := utils.CheckToken(authToken)
+	memberList, err := services.AuthenticateAndAuthorize(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
-		log.Printf("error check token: %v", err)
+		ErrorHandler(w, http.StatusBadRequest, []string{err.Error()}, fmt.Sprintf("error in auth service: %v", err))
 		return
 	}
 
-	var addMembers []models.AddMemberRequest
-	if err := json.NewDecoder(r.Body).Decode(&addMembers); err != nil {
-		log.Printf("failed decode request: %v", err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if len(addMembers) == 0 {
-		http.Error(w, "no members to add", http.StatusBadRequest)
-		return
-	}
-
-	chatID := addMembers[0].ChatID
-	_, authorStatusCode, err := utils.ProxyRequest(consts.GET_Method, fmt.Sprintf(consts.DB_GetAuthor, email, chatID), nil, http.StatusOK)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusForbidden)
-		log.Printf("access foribem: %v, status code: %d", err, authorStatusCode)
-		return
-	}
-
-	var errors []string
-	for _, member := range addMembers {
-		_, _, err := utils.ProxyRequest(consts.GET_Method, fmt.Sprintf(consts.DB_CheckUser, member.UserID), nil, http.StatusOK)
-		if err != nil {
-			log.Printf("failed request: %v", err)
-			errors = append(errors, fmt.Sprintf("failed to check user id: %v", member.UserID))
+	response := &models.Response{}
+	for _, member := range memberList {
+		if err := userservice.UserExists(member.UserID); err != nil {
+			response.Errors = append(response.Errors, err.Error())
+			continue
 		}
 
-		_, _, err = utils.ProxyRequest(consts.POST_Method, consts.DB_AddMembers, member, http.StatusAccepted)
-		if err != nil {
-			log.Printf("failed request: %v", err)
-			errors = append(errors, fmt.Sprintf("failed to add user %d in chat %d", member.UserID, member.ChatID))
+		if err = userservice.ManageMember(consts.POST_Method, consts.DB_AddMembers, member, http.StatusAccepted); err != nil {
+			response.Errors = append(response.Errors, "failed")
 		}
 	}
 
-	if len(errors) > 0 {
-		w.WriteHeader(http.StatusPartialContent)
-	} else {
-		w.WriteHeader(http.StatusOK)
-	}
-
-	response := map[string]interface{}{
-		"errors": errors,
-	}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		http.Error(w, "error encoding json", http.StatusInternalServerError)
-		log.Println("error encoding json for response", err)
-	}
+	SendRespond(w, http.StatusOK, response)
 }
 
 func (s *Server) DeleteMember(w http.ResponseWriter, r *http.Request) {
-	authToken := r.Header.Get("Authorization")
-	email, err := utils.CheckToken(authToken)
+	memberList, err := services.AuthenticateAndAuthorize(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
-		log.Printf("error check token: %v", err)
+		ErrorHandler(w, http.StatusBadRequest, []string{err.Error()}, fmt.Sprintf("error in auth service: %v", err))
 		return
 	}
 
-	var deleteMembers []models.AddMemberRequest
-	if err := json.NewDecoder(r.Body).Decode(&deleteMembers); err != nil {
-		log.Printf("error decoding r body to json: %v", err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if len(deleteMembers) == 0 {
-		http.Error(w, "no members to delete", http.StatusBadRequest)
-		return
-	}
-
-	chatID := deleteMembers[0].ChatID
-	_, authorStatusCode, err := utils.ProxyRequest(consts.GET_Method, fmt.Sprintf(consts.DB_GetAuthor, email, chatID), nil, http.StatusOK)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusForbidden)
-		log.Printf("access foribem: %v, status code: %d", err, authorStatusCode)
-		return
-	}
-
-	var errors []string
-	for _, member := range deleteMembers {
-		_, _, err := utils.ProxyRequest(consts.GET_Method, fmt.Sprintf(consts.DB_CheckUser, member.UserID), nil, http.StatusOK)
-		if err != nil {
+	response := &models.Response{}
+	for _, member := range memberList {
+		if _, _, err := utils.ProxyRequest(consts.GET_Method, fmt.Sprintf(consts.DB_CheckUser, member.UserID), nil, http.StatusOK); err != nil {
 			log.Printf("failed request: %v", err)
-			errors = append(errors, fmt.Sprintf("failed to check user id: %v", member.UserID))
+			response.Errors = append(response.Errors, err.Error())
+			continue
 		}
 
-		_, _, err = utils.ProxyRequest(consts.DELETE_Method, consts.DB_DeleteMember, member, http.StatusNoContent)
-		if err != nil {
-			log.Printf("failed request: %v", err)
-			errors = append(errors, fmt.Sprintf("failed to add user %d in chat %d", member.UserID, member.ChatID))
+		if err = userservice.ManageMember(consts.DELETE_Method, consts.DB_DeleteMember, member, http.StatusNoContent); err != nil {
+			log.Printf("failed delete member: %v", err)
+			response.Errors = append(response.Errors, "failed")
 		}
 	}
 
-	if len(errors) > 0 {
-		w.WriteHeader(http.StatusPartialContent)
-	} else {
-		w.WriteHeader(http.StatusOK)
-	}
-
-	response := map[string]interface{}{
-		"errors": errors,
-	}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		http.Error(w, "error encoding json", http.StatusInternalServerError)
-		log.Println("error encoding json for response", err)
-	}
+	SendRespond(w, http.StatusOK, response)
 }
