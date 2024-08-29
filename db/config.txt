@@ -1,5 +1,0 @@
-host=localhost
-port=5432
-user=ssq
-password=ScR26011161
-dbname=petproject
