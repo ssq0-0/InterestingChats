@@ -1,57 +1,116 @@
 package handlers
 
 import (
+	"InterestingChats/backend/microservice/db/internal/consts"
 	"InterestingChats/backend/microservice/db/internal/db"
 	"InterestingChats/backend/microservice/db/internal/handlers"
+	"InterestingChats/backend/microservice/db/internal/logger"
 	"InterestingChats/backend/microservice/db/internal/models"
 	"InterestingChats/backend/microservice/db/internal/utils"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 )
 
 type ChatHandler struct {
 	ChatService *db.ChatService
+	log         logger.Logger
 }
 
-func NewChatHandler(chatService *db.ChatService) *ChatHandler {
+func NewChatHandler(chatService *db.ChatService, log logger.Logger) *ChatHandler {
 	if chatService == nil {
 		log.Fatal("ChatService is nil")
 	}
 	return &ChatHandler{
 		ChatService: chatService,
+		log:         log,
 	}
 }
 
 func (ch *ChatHandler) GetChat(w http.ResponseWriter, r *http.Request) {
-	chatName := r.URL.Query().Get("chatName")
-	if chatName == "" {
-		handlers.ErrorHandler(w, http.StatusBadRequest, []string{"Missing chat name in url"}, "Missing chat name in url")
+	chatIDstr, userIDstr := r.URL.Query().Get("chatID"), r.URL.Query().Get("userID")
+	if chatIDstr == "" || userIDstr == "" {
+		handlers.ErrorHandler(w, http.StatusBadRequest, ch.log, []string{consts.ErrMissingChatName, consts.ErrMissingUserID}, nil)
 		return
 	}
 
-	chat, err := ch.ChatService.GetChatInfo(chatName)
-	if err != nil {
-		handlers.ErrorHandler(w, http.StatusBadRequest, []string{"Failed to get chat info"}, fmt.Sprintf("Failed to get chat info: %v", err))
+	var userID int
+	if clientErr, err := utils.ConvertValue(userIDstr, &userID); err != nil {
+		handlers.ErrorHandler(w, http.StatusBadRequest, ch.log, []string{clientErr}, err)
 		return
 	}
+
+	var chatID int
+	if clientErr, err := utils.ConvertValue(chatIDstr, &chatID); err != nil {
+		handlers.ErrorHandler(w, http.StatusBadRequest, ch.log, []string{clientErr}, err)
+		return
+	}
+
+	chat, clientErr, err := ch.ChatService.GetChatInfo(chatID, userID)
+	if err != nil {
+		handlers.ErrorHandler(w, http.StatusBadRequest, ch.log, []string{clientErr}, err)
+		return
+	}
+
 	handlers.SendRespond(w, http.StatusOK, chat)
 }
 
-func (ch *ChatHandler) CreateChat(w http.ResponseWriter, r *http.Request) {
-	var chat models.Chat
-	if err := json.NewDecoder(r.Body).Decode(&chat); err != nil {
-		handlers.ErrorHandler(w, http.StatusBadRequest, []string{"Failed recived data"}, fmt.Sprintf("failed recived data: %v", err))
+func (ch *ChatHandler) GetAllChats(w http.ResponseWriter, r *http.Request) {
+	chatList, clientErr, err := ch.ChatService.GetAllChats()
+	if err != nil {
+		handlers.ErrorHandler(w, http.StatusBadRequest, ch.log, []string{clientErr}, err)
 		return
 	}
 
-	chatID, err := ch.ChatService.CreateChat(&chat)
+	handlers.SendRespond(w, http.StatusOK, &models.Response{
+		Errors: nil,
+		Data:   chatList,
+	})
+}
+
+func (ch *ChatHandler) GetChatBySymbols(w http.ResponseWriter, r *http.Request) {
+	chatList, clientErr, err := ch.ChatService.GetChat(r.URL.Query().Get("chatName"))
 	if err != nil {
-		handlers.ErrorHandler(w, http.StatusBadRequest, []string{"Failed create chat"}, fmt.Sprintf("failed create chat: %v", err))
+		handlers.ErrorHandler(w, http.StatusBadRequest, ch.log, []string{clientErr}, err)
 		return
 	}
-	chat.ID = chatID
+
+	handlers.SendRespond(w, http.StatusOK, &models.Response{
+		Errors: nil,
+		Data:   chatList,
+	})
+}
+
+func (ch *ChatHandler) GetUserChats(w http.ResponseWriter, r *http.Request) {
+	var userID int
+	if clientErr, err := utils.ConvertValue(r.URL.Query().Get("userID"), &userID); err != nil {
+		handlers.ErrorHandler(w, http.StatusBadRequest, ch.log, []string{clientErr}, err)
+		return
+	}
+
+	chatList, clientErr, err := ch.ChatService.GetUserChats(userID)
+	if err != nil {
+		handlers.ErrorHandler(w, http.StatusBadRequest, ch.log, []string{clientErr}, err)
+		return
+	}
+
+	handlers.SendRespond(w, http.StatusOK, &models.Response{
+		Errors: nil,
+		Data:   chatList,
+	})
+}
+
+func (ch *ChatHandler) CreateChat(w http.ResponseWriter, r *http.Request) {
+	var chat models.CreateChat
+	if err := json.NewDecoder(r.Body).Decode(&chat); err != nil {
+		handlers.ErrorHandler(w, http.StatusBadRequest, ch.log, []string{consts.ErrInvalidValueFormat}, fmt.Errorf(consts.InternalErrFailedRequest, err))
+		return
+	}
+
+	if clientErr, err := ch.ChatService.CreateChat(&chat); err != nil {
+		handlers.ErrorHandler(w, http.StatusBadRequest, ch.log, []string{clientErr}, err)
+		return
+	}
 
 	handlers.SendRespond(w, http.StatusCreated, chat)
 }
@@ -59,19 +118,18 @@ func (ch *ChatHandler) CreateChat(w http.ResponseWriter, r *http.Request) {
 func (ch *ChatHandler) DeleteChat(w http.ResponseWriter, r *http.Request) {
 	chatIDStr := r.URL.Query().Get("chatID")
 	if chatIDStr == "" {
-		handlers.ErrorHandler(w, http.StatusBadRequest, []string{"missing chat id in request"}, "missing chat id in request")
+		handlers.ErrorHandler(w, http.StatusBadRequest, ch.log, []string{consts.ErrMissingChatID}, fmt.Errorf(consts.InternalErrMissingURLVal))
 		return
 	}
 
 	var chatID int
-	if err := utils.ConvertValue(chatIDStr, &chatID); err != nil {
-		handlers.ErrorHandler(w, http.StatusBadRequest, []string{"failed convert value"}, fmt.Sprintf("failed convert value: %v", err))
+	if clientErr, err := utils.ConvertValue(chatIDStr, &chatID); err != nil {
+		handlers.ErrorHandler(w, http.StatusBadRequest, ch.log, []string{clientErr}, err)
 		return
 	}
-	// ////
-	err := ch.ChatService.DeleteChat(chatID)
-	if err != nil {
-		handlers.ErrorHandler(w, http.StatusBadRequest, []string{"failed delete chat"}, fmt.Sprintf("failed delete chat: %v", err))
+
+	if clientErr, err := ch.ChatService.DeleteChat(chatID); err != nil {
+		handlers.ErrorHandler(w, http.StatusBadRequest, ch.log, []string{clientErr}, err)
 		return
 	}
 
@@ -82,34 +140,32 @@ func (ch *ChatHandler) DeleteChat(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ch *ChatHandler) DeleteMember(w http.ResponseWriter, r *http.Request) {
-	var deleteMember models.AddMemberRequest
+	var deleteMember models.MemberRequest
 	if err := json.NewDecoder(r.Body).Decode(&deleteMember); err != nil {
-		handlers.ErrorHandler(w, http.StatusBadRequest, []string{"Failed recived data"}, fmt.Sprintf("failed recived data: %v", err))
+		handlers.ErrorHandler(w, http.StatusBadRequest, ch.log, []string{consts.ErrInvalidValueFormat}, fmt.Errorf(consts.InternalErrFailedRequest, err))
 		return
 	}
 
-	err := ch.ChatService.DeleteMember(deleteMember.ChatID, deleteMember.UserID)
-	if err != nil {
-		handlers.ErrorHandler(w, http.StatusBadRequest, []string{"Failed delete member"}, fmt.Sprintf("Failed delete member: %v", err))
+	if clientErr, err := ch.ChatService.DeleteMember(deleteMember.ChatID, deleteMember.UserID); err != nil {
+		handlers.ErrorHandler(w, http.StatusBadRequest, ch.log, []string{clientErr}, err)
 		return
 	}
 
 	handlers.SendRespond(w, http.StatusNoContent, &models.Response{
-		Data:   "successful deleted user",
+		Data:   nil,
 		Errors: nil,
 	})
 }
 
 func (ch *ChatHandler) AddMembers(w http.ResponseWriter, r *http.Request) {
-	var addMember models.AddMemberRequest
+	var addMember models.MemberRequest
 	if err := json.NewDecoder(r.Body).Decode(&addMember); err != nil {
-		handlers.ErrorHandler(w, http.StatusBadRequest, []string{"Failed recived data"}, fmt.Sprintf("failed recived data: %v", err))
+		handlers.ErrorHandler(w, http.StatusBadRequest, ch.log, []string{consts.ErrInvalidValueFormat}, fmt.Errorf(consts.InternalErrFailedRequest, err))
 		return
 	}
 
-	err := ch.ChatService.AddMember(addMember.ChatID, addMember.UserID)
-	if err != nil {
-		handlers.ErrorHandler(w, http.StatusBadRequest, []string{"failed operation"}, fmt.Sprintf("failed operation: %v", err))
+	if clientErr, err := ch.ChatService.AddMember(addMember.ChatID, addMember.UserID); err != nil || clientErr != "" {
+		handlers.ErrorHandler(w, http.StatusBadRequest, ch.log, []string{clientErr}, err)
 		return
 	}
 
@@ -120,38 +176,50 @@ func (ch *ChatHandler) AddMembers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ch *ChatHandler) GetAuthor(w http.ResponseWriter, r *http.Request) {
-	if ch.ChatService == nil {
-		log.Fatal("ChatService is nil")
-	}
-
 	userIDstr, chatIDstr := r.URL.Query().Get("userID"), r.URL.Query().Get("chatID")
 	if userIDstr == "" || chatIDstr == "" {
-		http.Error(w, "missing email or chat name", http.StatusBadRequest)
-		log.Printf("missing email or chat name")
+		handlers.ErrorHandler(w, http.StatusBadRequest, ch.log, []string{consts.ErrMissingChatName, consts.ErrMissingUserID}, fmt.Errorf(consts.InternalErrMissingURLVal))
 		return
 	}
 
 	var chatID, userID int
-	if err := utils.ConvertValue(chatIDstr, &chatID); err != nil {
-		handlers.ErrorHandler(w, http.StatusBadRequest, []string{"failed convert chat id value"}, fmt.Sprintf("failed convert value: %v", err))
+	if clientErr, err := utils.ConvertValue(chatIDstr, &chatID); err != nil {
+		handlers.ErrorHandler(w, http.StatusBadRequest, ch.log, []string{clientErr}, err)
 		return
 	}
-	if err := utils.ConvertValue(userIDstr, &userID); err != nil {
-		handlers.ErrorHandler(w, http.StatusBadRequest, []string{"failed convert user id value"}, fmt.Sprintf("failed convert value: %v", err))
+	if clientErr, err := utils.ConvertValue(userIDstr, &userID); err != nil {
+		handlers.ErrorHandler(w, http.StatusBadRequest, ch.log, []string{clientErr}, err)
 		return
 	}
 
-	accept, err := ch.ChatService.CheckAuthor(userID, chatID)
-	if err != nil {
-		handlers.ErrorHandler(w, http.StatusBadRequest, []string{"error checking author"}, fmt.Sprintf("error checking author: %v", err))
+	if clientErr, err := ch.ChatService.CheckAuthor(userID, chatID); err != nil {
+		handlers.ErrorHandler(w, http.StatusBadRequest, ch.log, []string{clientErr}, err)
 		return
 	}
-	if !accept {
-		handlers.ErrorHandler(w, http.StatusForbidden, []string{"user is not the author"}, fmt.Sprintf("user email: %d is not the author of chat %d", userID, chatID))
-		return
-	}
+
 	handlers.SendRespond(w, http.StatusOK, &models.Response{
 		Data:   userID,
 		Errors: nil,
 	})
+}
+
+func (ch *ChatHandler) SaveMessage(w http.ResponseWriter, r *http.Request) {
+	var chatID int
+	if userErr, err := utils.ConvertValue(r.URL.Query().Get("chatID"), &chatID); err != nil {
+		handlers.ErrorHandler(w, http.StatusBadRequest, ch.log, []string{userErr}, err)
+		return
+	}
+	ch.log.Infof("chat id here: %d", chatID)
+	var message models.Message
+	if err := json.NewDecoder(r.Body).Decode(&message); err != nil {
+		handlers.ErrorHandler(w, http.StatusBadRequest, ch.log, []string{consts.ErrInvalidValueFormat}, fmt.Errorf(consts.InternalErrFailedRequest, err))
+		return
+	}
+
+	if clientErr, err := ch.ChatService.SaveMessage(message, chatID); err != nil {
+		handlers.ErrorHandler(w, http.StatusBadRequest, ch.log, []string{clientErr}, err)
+		return
+	}
+
+	handlers.SendRespond(w, http.StatusOK, &models.Response{})
 }

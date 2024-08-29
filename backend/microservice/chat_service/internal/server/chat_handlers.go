@@ -7,140 +7,178 @@ import (
 	chatservice "chat_service/internal/services/chatService"
 	userservice "chat_service/internal/services/userService"
 	"chat_service/internal/utils"
-
-	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
-	"net/url"
 )
 
-func (s *Server) GetChatHistory(w http.ResponseWriter, r *http.Request) {
-	chatName := r.URL.Query().Get("chatName")
-	if chatName == "" {
-		ErrorHandler(w, http.StatusBadRequest, []string{"chatName is required"}, "chatName is required")
-		return
-	}
-
-	encodedChatName := url.QueryEscape(chatName)
-	body, _, err := utils.ProxyRequest(consts.GET_Method, fmt.Sprintf(consts.DB_GetChatHistory, encodedChatName), nil, http.StatusOK)
+func (s *Server) GetAllChats(w http.ResponseWriter, r *http.Request) {
+	repsonse, statusCode, clientErr, err := chatservice.GetAllChats(r)
 	if err != nil {
-		ErrorHandler(w, http.StatusBadRequest, []string{"failed get info about chat"}, fmt.Sprintf("failed get info about chat: %v", err))
+		chatservice.ErrorHandler(w, statusCode, s.log, []string{clientErr}, err.Error())
 		return
 	}
 
-	var chatInfo models.Chat
-	if err := utils.ParseBody(body, &chatInfo); err != nil {
-		ErrorHandler(w, http.StatusBadRequest, []string{"failed to deserialize chat data"}, fmt.Sprintf("failed to deserialize chat data: %v", err))
+	chatservice.SendRespond(w, http.StatusOK, s.log, repsonse)
+}
+
+func (s *Server) GetUserChats(w http.ResponseWriter, r *http.Request) {
+	userID, statusCode, clientErr, err := userservice.TokenVerification(r.Header.Get("Authorization"))
+	if err != nil || userID == 0 {
+		chatservice.ErrorHandler(w, statusCode, s.log, []string{clientErr}, err.Error())
 		return
 	}
 
-	SendRespond(w, http.StatusOK, &models.Response{
+	userChatLists, statusCode, clientErr, err := chatservice.UserChats(userID)
+	if err != nil {
+		chatservice.ErrorHandler(w, statusCode, s.log, []string{clientErr}, err.Error())
+		return
+	}
+
+	chatservice.SendRespond(w, http.StatusOK, s.log, userChatLists)
+}
+
+func (s *Server) GetChatHistory(w http.ResponseWriter, r *http.Request) {
+	chatInfo, statusCode, clientErr, err := chatservice.GetChatHistory(r)
+	if err != nil {
+		chatservice.ErrorHandler(w, statusCode, s.log, []string{clientErr}, err.Error())
+		return
+	}
+
+	chatservice.SendRespond(w, http.StatusOK, s.log, &models.Response{
 		Data:   chatInfo,
 		Errors: nil,
 	})
 }
 
-func (s *Server) CreateChat(w http.ResponseWriter, r *http.Request) {
-	userID, err := userservice.UserVerification(r)
+func (s *Server) SearchChat(w http.ResponseWriter, r *http.Request) {
+	userID, statusCode, clientErr, err := userservice.TokenVerification(r.Header.Get("Authorization"))
 	if err != nil || userID == 0 {
-		ErrorHandler(w, http.StatusBadRequest, []string{"access rejected"}, fmt.Sprintf("access rejected: %v", err))
+		chatservice.ErrorHandler(w, statusCode, s.log, []string{clientErr}, err.Error())
 		return
 	}
 
-	chatInfo := &models.Chat{Creator: userID}
-	if err := json.NewDecoder(r.Body).Decode(&chatInfo); err != nil {
-		ErrorHandler(w, http.StatusBadRequest, []string{"error decoding request body"}, fmt.Sprintf("error decoding request body: %v", err))
-		return
-	}
-
-	body, statusCode, err := utils.ProxyRequest(consts.POST_Method, consts.DB_CreateChat, chatInfo, http.StatusCreated)
+	response, clientErr, err := chatservice.GetQueryChat(r)
 	if err != nil {
-		ErrorHandler(w, statusCode, []string{"failed to create chat"}, fmt.Sprintf("failed to create chat: %v. StatusCode: %d", err, statusCode))
+		chatservice.ErrorHandler(w, http.StatusBadRequest, s.log, []string{clientErr}, err.Error())
 		return
 	}
 
-	if err := utils.ParseBody(body, &chatInfo); err != nil {
-		ErrorHandler(w, http.StatusBadRequest, []string{"failed to deserialize chat data"}, fmt.Sprintf("failed to deserialize chat data: %v", err))
+	chatservice.SendRespond(w, http.StatusOK, s.log, response)
+}
+
+func (s *Server) CreateChat(w http.ResponseWriter, r *http.Request) {
+	userID, statusCode, clientErr, err := userservice.TokenVerification(r.Header.Get("Authorization"))
+	if err != nil || userID == 0 {
+		chatservice.ErrorHandler(w, statusCode, s.log, []string{clientErr}, err.Error())
 		return
 	}
 
-	SendRespond(w, http.StatusCreated, &models.Response{
-		Data:   chatInfo,
+	chatInfo, clientErr, err := chatservice.Validation(r, userID)
+	if err != nil {
+		chatservice.ErrorHandler(w, http.StatusBadRequest, s.log, []string{clientErr}, err.Error())
+		return
+	}
+
+	body, statusCode, clientErr, err := utils.ProxyRequest(consts.POST_Method, consts.DB_CreateChat, chatInfo, http.StatusCreated)
+	if err != nil {
+		chatservice.ErrorHandler(w, statusCode, s.log, []string{clientErr}, err.Error())
+		return
+	}
+
+	var chat models.GetAndCreateChat
+	if err := utils.ParseBody(body, &chat); err != nil {
+		chatservice.ErrorHandler(w, http.StatusBadRequest, s.log, []string{consts.ErrInternalServer}, err.Error())
+		return
+	}
+
+	chatservice.SendRespond(w, http.StatusCreated, s.log, &models.Response{
 		Errors: nil,
+		Data:   chat,
 	})
 }
 
 func (s *Server) DeleteChat(w http.ResponseWriter, r *http.Request) {
-	userID, err := userservice.UserVerification(r)
+	userID, statusCode, clientErr, err := userservice.TokenVerification(r.Header.Get("Authorization"))
 	if err != nil || userID == 0 {
-		ErrorHandler(w, http.StatusBadRequest, []string{"access rejected"}, fmt.Sprintf("access rejected: %v", err))
+		chatservice.ErrorHandler(w, statusCode, s.log, []string{clientErr}, err.Error())
 		return
 	}
 
 	chatID, err := chatservice.GetChatID(r)
 	if err != nil {
-		ErrorHandler(w, http.StatusBadRequest, []string{"failed get info about chat"}, fmt.Sprintf("failed get info about chat: %v", err))
+		chatservice.ErrorHandler(w, http.StatusBadRequest, s.log, []string{consts.ErrChatNotFound}, err.Error())
 		return
 	}
 
-	_, authorStatusCode, err := utils.ProxyRequest(consts.GET_Method, fmt.Sprintf(consts.DB_GetAuthor, userID, chatID), nil, http.StatusOK)
-	if err != nil {
-		ErrorHandler(w, authorStatusCode, []string{"failed get info about author"}, fmt.Sprintf("access foribem: %v, status code: %d", err, authorStatusCode))
+	// 1
+	if _, authorStatusCode, clientErr, err := utils.ProxyRequest(consts.GET_Method, fmt.Sprintf(consts.DB_GetAuthor, userID, chatID), nil, http.StatusOK); err != nil {
+		chatservice.ErrorHandler(w, authorStatusCode, s.log, []string{clientErr}, err.Error())
 		return
 	}
 
-	_, deleteStatusCode, err := utils.ProxyRequest(consts.DELETE_Method, fmt.Sprintf(consts.DB_DeleteChat, chatID), nil, http.StatusNoContent)
-	if err != nil {
-		ErrorHandler(w, deleteStatusCode, []string{"failed delete chat"}, fmt.Sprintf("failed request: %v, statuscode: %d", err, deleteStatusCode))
+	// 2
+	if _, deleteStatusCode, clientErr, err := utils.ProxyRequest(consts.DELETE_Method, fmt.Sprintf(consts.DB_DeleteChat, chatID), nil, http.StatusNoContent); err != nil {
+		chatservice.ErrorHandler(w, deleteStatusCode, s.log, []string{clientErr}, err.Error())
 		return
 	}
 
-	SendRespond(w, http.StatusNoContent, nil)
+	// TODO: change data to 'response' by 1 & 2
+	chatservice.SendRespond(w, http.StatusOK, s.log, &models.Response{
+		Data:   "successful delete",
+		Errors: nil,
+	})
 }
 
 func (s *Server) AddMember(w http.ResponseWriter, r *http.Request) {
-	memberList, err := services.AuthenticateAndAuthorize(r)
+	memberList, statusCode, clientErr, err := services.AuthenticateAndAuthorize(r)
 	if err != nil {
-		ErrorHandler(w, http.StatusBadRequest, []string{err.Error()}, fmt.Sprintf("error in auth service: %v", err))
+		chatservice.ErrorHandler(w, statusCode, s.log, []string{clientErr}, err.Error())
 		return
 	}
 
 	response := &models.Response{}
 	for _, member := range memberList {
-		if err := userservice.UserExists(member.UserID); err != nil {
-			response.Errors = append(response.Errors, err.Error())
+		if clientErr, _, err := userservice.UserExists(member.UserID); err != nil {
+			response.Errors = append(response.Errors, clientErr)
 			continue
 		}
 
-		if err = userservice.ManageMember(consts.POST_Method, consts.DB_AddMembers, member, http.StatusAccepted); err != nil {
-			response.Errors = append(response.Errors, "failed")
+		if clientErr, err = userservice.ManageMember(consts.POST_Method, consts.DB_AddMembers, member, http.StatusAccepted); err != nil {
+			response.Errors = append(response.Errors, clientErr)
 		}
 	}
 
-	SendRespond(w, http.StatusOK, response)
+	chatservice.SendRespond(w, http.StatusOK, s.log, response)
 }
 
 func (s *Server) DeleteMember(w http.ResponseWriter, r *http.Request) {
-	memberList, err := services.AuthenticateAndAuthorize(r)
+	memberList, statusCode, clientErr, err := services.AuthenticateAndAuthorize(r)
 	if err != nil {
-		ErrorHandler(w, http.StatusBadRequest, []string{err.Error()}, fmt.Sprintf("error in auth service: %v", err))
+		chatservice.ErrorHandler(w, statusCode, s.log, []string{clientErr}, err.Error())
 		return
 	}
 
 	response := &models.Response{}
 	for _, member := range memberList {
-		if _, _, err := utils.ProxyRequest(consts.GET_Method, fmt.Sprintf(consts.DB_CheckUser, member.UserID), nil, http.StatusOK); err != nil {
-			log.Printf("failed request: %v", err)
-			response.Errors = append(response.Errors, err.Error())
+		if _, _, clientErr, err := utils.ProxyRequest(consts.GET_Method, fmt.Sprintf(consts.DB_CheckUser, member.UserID), nil, http.StatusOK); err != nil {
+			response.Errors = append(response.Errors, clientErr)
 			continue
 		}
 
-		if err = userservice.ManageMember(consts.DELETE_Method, consts.DB_DeleteMember, member, http.StatusNoContent); err != nil {
-			log.Printf("failed delete member: %v", err)
-			response.Errors = append(response.Errors, "failed")
+		if clientErr, err = userservice.ManageMember(consts.DELETE_Method, consts.DB_DeleteMember, member, http.StatusNoContent); err != nil {
+			response.Errors = append(response.Errors, clientErr)
 		}
 	}
 
-	SendRespond(w, http.StatusOK, response)
+	chatservice.SendRespond(w, http.StatusOK, s.log, response)
+}
+
+func (s *Server) JoinToChat(w http.ResponseWriter, r *http.Request) {
+	response, statusCode, clientErr, err := chatservice.JoinToChat(r)
+	if err != nil {
+		chatservice.ErrorHandler(w, statusCode, s.log, []string{clientErr}, err.Error())
+		return
+	}
+
+	chatservice.SendRespond(w, http.StatusOK, s.log, response)
 }

@@ -2,13 +2,13 @@ package models
 
 type BaseUser struct {
 	Email    string `json:"email"`
-	Password string `json:"password"`
+	Username string `json:"username"`
 }
 
 type User struct {
-	ID       int    `json:"id"`
-	Username string `json:"username"`
+	ID int `json:"id"`
 	BaseUser
+	Password string `json:"password"`
 }
 
 type Tokens struct {
@@ -23,4 +23,15 @@ type UserTokens struct {
 type Response struct {
 	Errors []string    `json:"Errors"`
 	Data   interface{} `json:"Data"`
+}
+
+type AuthResponse struct {
+	Tokens Tokens `json:"tokens"`
+	User   User   `json:"user"`
+}
+
+type ChangeUserData struct {
+	Type   string `json:"type"`
+	Data   string `json:"Data"`
+	UserID int    `json:"user_id"`
 }

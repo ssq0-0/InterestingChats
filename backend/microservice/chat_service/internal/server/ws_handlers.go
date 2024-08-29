@@ -1,150 +1,119 @@
 package server
 
 import (
-	"chat_service/internal/consts"
+	"chat_service/internal/logger"
 	"chat_service/internal/models"
-	"chat_service/internal/utils"
-
-	"encoding/json"
+	chatservice "chat_service/internal/services/chatService"
+	"chat_service/internal/services/ws_service"
+	"crypto/sha256"
 	"fmt"
 	"log"
 	"net/http"
-	"strconv"
-	"strings"
 	"sync"
-	"time"
 
 	"github.com/gorilla/websocket"
 )
 
-func (s *Server) OpenWS(w http.ResponseWriter, r *http.Request) {
-	chatName := r.URL.Query().Get("chatName")
-	if chatName == "" {
-		http.Error(w, "chatName is required", http.StatusBadRequest)
-		return
-	}
-	/*
+type WS struct {
+	Upgrader *websocket.Upgrader
+	Chats    map[string]*models.Chat
+	Mu       *sync.RWMutex
+	log      logger.Logger
+}
 
-		NEED WRITE OTHER METHODS WITH CHECK TOKENS
-
-	*/
-	authHeader := r.Header.Get("access_token")
-	email, err := utils.CheckToken(authHeader)
+func (ws *WS) ChatWebsocket(w http.ResponseWriter, r *http.Request) {
+	ws.Mu.Lock()
+	chat, statusCode, userMsg, err := ws_service.PrepareWS(w, r, ws.Chats)
+	ws.Mu.Unlock()
 	if err != nil {
-		log.Printf("invalid token: %v", err)
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		chatservice.ErrorHandler(w, statusCode, ws.log, []string{userMsg}, err.Error())
 		return
 	}
 
-	bodyChat, statusCodeChat, err := utils.ProxyRequest(consts.GET_Method, fmt.Sprintf(consts.DB_GetChatHistory, chatName), nil, http.StatusOK)
+	conn, logMsg, err := ws_service.OpenWS(w, r, chat, ws.Upgrader)
 	if err != nil {
-		log.Println("failed get info about chat", err)
-		http.Error(w, "failed get info about chat", http.StatusBadRequest)
+		chatservice.ErrorHandler(w, http.StatusBadGateway, ws.log, []string{err.Error()}, logMsg)
 		return
 	}
-	if statusCodeChat == http.StatusNotFound {
-		log.Println("chat not found")
-		http.Error(w, "chat not found", http.StatusBadRequest)
-		return
-	}
+	defer conn.Close()
+	ws.log.Infof("Connection open, addr: %s", conn.RemoteAddr())
 
-	chat := &models.Chat{}
-	if err := json.Unmarshal(bodyChat, chat); err != nil {
-		log.Println("failed to deserialize chat data", err)
-		http.Error(w, "failed to deserialize chat data", http.StatusInternalServerError)
-		return
-	}
-
-	log.Printf("email: %s", string(email))
-	log.Printf("chat details: ID: %d, Name: %s, Members: %v, Messages: %v", chat.ID, chat.ChatName, chat.Members, chat.Messages)
-
-	userFound := false
-	for _, user := range chat.Members {
-		if user.Email == string(email) {
-			userFound = true
+	go ws.Receiver(chat, conn)
+	ws.log.Infof("connections now: %+v", chat.Clients)
+	for {
+		msg, err := ws_service.MessageRecording(conn, chat, ws.log)
+		if err != nil {
+			ws_service.SendError(conn, fmt.Sprintf("failed read message from websocket: %v", err))
 			break
 		}
-	}
 
-	if !userFound {
-		log.Println("member not in chat. Rejected to open")
-		http.Error(w, "member not in chat. Rejected to open", http.StatusUnauthorized)
-		return
-	}
-
-	conn, err := s.Upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Printf("failed open ws connection: %v", err)
-		return
-	}
-
-	if chat.Mu == nil {
-		chat.Mu = &sync.Mutex{}
-	}
-	if chat.Clients == nil {
-		chat.Clients = make(map[*websocket.Conn]bool)
-	}
-	if chat.Broadcast == nil {
-		chat.Broadcast = make(chan models.Message)
-	}
-
-	chat.Mu.Lock()
-	chat.Clients[conn] = true
-	chat.Mu.Unlock()
-
-	defer func() {
-		chat.Mu.Lock()
-		delete(chat.Clients, conn)
-		chat.Mu.Unlock()
-		conn.Close()
-	}()
-	go s.Reciver(chat)
-	for {
-		_, p, err := conn.ReadMessage()
-		if err != nil {
-			log.Printf("failed read message in ws: %v", err)
-			return
-		}
-
-		message := string(p)
-		parts := strings.SplitN(message, ":", 2)
-		if len(parts) != 2 {
-			log.Printf("len parts < 2: %d", len(parts))
-			continue
-		}
-		userID, err := strconv.Atoi(parts[0])
-		if err != nil {
-			log.Printf("error convert to int: %v", err)
+		if !ws.isMessageValid(msg, chat, conn) {
 			continue
 		}
 
-		chat.Mu.Lock()
-		_, userExists := chat.Members[userID]
-		chat.Mu.Unlock()
-		if !userExists {
-			log.Printf("user %d not a member of chat", userID)
+		if response, err := ws_service.SaveMessage(msg, chat.ID); err != nil {
+			ws_service.SendError(conn, fmt.Sprintf("error save message: %v", response.Errors))
 			continue
 		}
 
-		msg := models.Message{Body: parts[1], UserID: userID, Time: time.Now()}
-		chat.Broadcast <- msg
+		chat.Broadcast <- *msg
+		ws.log.Infof("Message sent to Broadcast: %+v", msg)
+	}
+	ws_service.CloseWS(chat, conn)
+	ws.log.Infof("connections without cycle: %+v", chat.Clients)
+}
+
+func (ws *WS) isMessageValid(msg *models.Message, chat *models.Chat, conn *websocket.Conn) bool {
+	ws.Mu.RLock()
+	defer ws.Mu.RUnlock()
+
+	if accept := ws_service.IsValidMessage(msg, chat); !accept {
+		ws_service.SendError(conn, "user is not member chat")
+		return false
+	}
+	return true
+}
+
+func (ws *WS) Receiver(chat *models.Chat, conn *websocket.Conn) {
+	for msg := range chat.Broadcast {
+		ws.log.Infof("Message received from Broadcast: %+v", msg)
+		hash := sha256.Sum256([]byte(msg.Body))
+		ws.log.Infof("Message ID: %x", hash)
+		ws.log.Infof("сообщение в ресивере")
+
+		clients := ws.filterClients(chat, conn)
+		log.Printf("After filtering, clients count: %d", len(clients))
+
+		for _, client := range clients {
+			if err := ws_service.MessageReading(client, chat, &msg); err != nil {
+				ws.handleClientError(chat, client, err)
+			}
+			ws.log.Infof("сообщение прочитано")
+		}
 	}
 }
 
-func (s *Server) Reciver(chat *models.Chat) {
-	for {
-		msg := <-chat.Broadcast
-		responseMessage := msg.Body + ":" + msg.Time.String() + strconv.Itoa(msg.UserID)
-
-		chat.Mu.Lock()
-		for client := range chat.Clients {
-			err := client.WriteMessage(websocket.TextMessage, []byte(responseMessage))
-			if err != nil {
-				log.Printf("failed send message: %v", err)
-				client.Close()
-				delete(chat.Clients, client)
-			}
-		}
-		chat.Mu.Unlock()
+func (ws *WS) filterClients(chat *models.Chat, conn *websocket.Conn) []*websocket.Conn {
+	ws.Mu.RLock()
+	defer ws.Mu.RUnlock()
+	log.Println("функция filterClients вызвана из Receiver")
+	clients := make([]*websocket.Conn, 0, len(chat.Clients))
+	for client := range chat.Clients {
+		log.Printf("Before filtering, clients count: %d", len(chat.Clients))
+		// TODO
+		// if client != conn {
+		clients = append(clients, client)
+		ws.log.Infof("Client added: %+v", ws)
+		// }
 	}
+	log.Println("клиенты возвращаются в Receiver")
+	return clients
+}
+
+func (ws *WS) handleClientError(chat *models.Chat, client *websocket.Conn, err error) {
+	ws_service.SendError(client, fmt.Sprintf("failed reading message: %v", err))
+	ws.Mu.Lock()
+	defer ws.Mu.Unlock()
+	delete(chat.Clients, client)
+	client.Close()
 }

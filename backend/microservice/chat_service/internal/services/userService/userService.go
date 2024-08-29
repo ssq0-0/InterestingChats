@@ -5,33 +5,35 @@ import (
 	"chat_service/internal/models"
 	"chat_service/internal/utils"
 	"fmt"
-	"log"
 	"net/http"
 )
 
-func UserVerification(r *http.Request) (int, error) {
-	authToken := r.Header.Get("Authorization")
-	userID, err := utils.CheckToken(authToken)
+func TokenVerification(token string) (int, int, string, error) {
+	userID, statusCode, clientErr, err := utils.CheckToken(token)
 	if err != nil {
-		log.Printf("access rejected: %v", err)
-		return 0, fmt.Errorf("access rejected: %v", err)
+		return 0, statusCode, clientErr, err
 	}
-	return userID, nil
+
+	if clientErr, statusCode, err := UserExists(userID); err != nil {
+		return 0, statusCode, clientErr, err
+	}
+
+	return userID, http.StatusOK, "", nil
 }
 
-func UserExists(userID int) error {
-	if _, _, err := utils.ProxyRequest(consts.GET_Method, fmt.Sprintf(consts.DB_CheckUser, userID), nil, http.StatusOK); err != nil {
-		log.Printf("failed request: %v", err)
-		return err
+func UserExists(userID int) (string, int, error) {
+	_, statusCode, clientErr, err := utils.ProxyRequest(consts.GET_Method, fmt.Sprintf(consts.DB_CheckUser, userID), nil, http.StatusOK)
+	if err != nil {
+		return clientErr, statusCode, err
 	}
-	return nil
+	return "", http.StatusOK, nil
 }
 
-func ManageMember(method, url string, member models.MemberRequest, statusCode int) error {
-	_, _, err := utils.ProxyRequest(method, url, member, statusCode)
+func ManageMember(method, url string, member models.MemberRequest, statusCode int) (string, error) {
+	_, _, clientErr, err := utils.ProxyRequest(method, url, member, statusCode)
 	if err != nil {
-		log.Printf("failed request: %v", err)
-		return err
+		return clientErr, err
 	}
-	return nil
+
+	return "", nil
 }

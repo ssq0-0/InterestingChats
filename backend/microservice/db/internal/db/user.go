@@ -1,12 +1,12 @@
 package db
 
 import (
+	"InterestingChats/backend/microservice/db/internal/consts"
+	"InterestingChats/backend/microservice/db/internal/db_queries"
 	"InterestingChats/backend/microservice/db/internal/models"
-	"context"
 	"database/sql"
 	"fmt"
-	"log"
-	"time"
+	"strings"
 )
 
 type UserService struct {
@@ -17,52 +17,78 @@ func NewUserService(db *sql.DB) *UserService {
 	return &UserService{Db: db}
 }
 
-func (us *UserService) CreateNewUser(ctx context.Context, user models.User) error {
-	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
-	defer cancel()
-
-	selectQuery := "SELECT id FROM users WHERE email = $1"
-	var existingUserID int
-	err := us.Db.QueryRowContext(ctx, selectQuery, user.Email).Scan(&existingUserID)
-	if err != nil && err != sql.ErrNoRows {
-		return fmt.Errorf("could not check if user exists: %v", err)
-	}
-	if existingUserID != 0 {
-		return fmt.Errorf("user with email %s already exists", user.Email)
-	}
-
-	insertQuery := "INSERT INTO users(username, email, password) VALUES ($1, $2, $3) RETURNING id"
-	err = us.Db.QueryRowContext(ctx, insertQuery, user.Username, user.Email, user.Password).Scan(&user.ID)
+func (us *UserService) CreateNewUser(user models.User) (*models.User, string, error) {
+	clientErr, err := db_queries.SelectUserFromDB(user.Email, us.Db)
 	if err != nil {
-		return fmt.Errorf("could not execute query: %v", err)
+		if err.Error() == fmt.Sprintf("user with email %s already exists", user.Email) {
+			return nil, clientErr, err
+		}
+		return nil, clientErr, fmt.Errorf("could not check if user exists: %v", err)
 	}
 
-	return nil
+	userInfo, clientErr, err := db_queries.InsertUser(user, us.Db)
+	if err != nil {
+		return nil, clientErr, err
+	}
+
+	return userInfo, "", nil
 }
 
-func (us *UserService) LoginData(ctx context.Context, user models.User) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
-	defer cancel()
-
-	selectQuery := "SELECT password FROM users WHERE email = $1"
-	var DBPassword string
-	err := us.Db.QueryRowContext(ctx, selectQuery, user.Email).Scan(&DBPassword)
+func (us *UserService) LoginData(user *models.User) (string, string, error) {
+	password, clietnErr, err := db_queries.SelectLoginUserInfo(user, us.Db)
 	if err != nil {
-		return "", fmt.Errorf("user with email %s not found: %v", user.Email, err)
+		return "", clietnErr, err
 	}
 
-	return DBPassword, nil
+	return password, "", nil
 }
 
-func (us *UserService) CheckUser(userID int) (bool, error) {
-	var exists bool
-	err := us.Db.QueryRowContext(context.Background(), "SELECT EXISTS(SELECT 1 FROM users WHERE id=$1)", userID).Scan(&exists)
+func (us *UserService) CheckUser(userID int) (bool, string, error) {
+	if clientErr, err := db_queries.ChechUserUxistsById(userID, us.Db); err != nil {
+		return false, clientErr, err
+	}
+
+	return true, "", nil
+}
+
+func (us *UserService) GetUserInfo(userID int) (*models.BaseUser, string, error) {
+	userInfo, err := db_queries.SelectAllUserInfo(userID, us.Db)
 	if err != nil {
-		log.Printf("error transaction: %v", err)
-		return false, err
+		return nil, consts.ErrUserNotFound, err
 	}
-	if !exists {
-		return false, fmt.Errorf("user not found")
+
+	return userInfo, "", nil
+}
+
+func (us *UserService) ChangeUsername(username string, userID int) (string, error) {
+	if username == "" || len(strings.ReplaceAll(username, " ", "")) == 0 || userID == 0 {
+		return consts.ErrMissingParametr, fmt.Errorf(consts.InternalErrMissingParametr)
 	}
-	return true, nil
+
+	if clientErr, err := db_queries.ChangeUsername(username, userID, us.Db); err != nil {
+		return clientErr, err
+	}
+
+	return "", nil
+}
+
+func (us *UserService) SearchUsers(symbols string) ([]*models.User, string, error) {
+	userList, clientErr, err := db_queries.SelectUserBySymbols(symbols, us.Db)
+	if err != nil {
+		return nil, clientErr, err
+	}
+
+	return userList, "", nil
+}
+
+func (us *UserService) ChangeEmail(email string, userID int) (string, error) {
+	if email == "" || len(strings.ReplaceAll(email, " ", "")) == 0 || userID == 0 {
+		return consts.ErrMissingParametr, fmt.Errorf(consts.InternalErrMissingParametr)
+	}
+
+	if clientErr, err := db_queries.ChangeEmail(email, userID, us.Db); err != nil {
+		return clientErr, err
+	}
+
+	return "", nil
 }

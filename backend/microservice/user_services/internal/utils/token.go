@@ -1,8 +1,10 @@
 package utils
 
 import (
+	"InterestingChats/backend/user_services/internal/consts"
 	"InterestingChats/backend/user_services/internal/models"
-	"errors"
+	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
@@ -18,8 +20,8 @@ type Claims struct {
 }
 
 func GenerateJWT(user models.User) (string, string, error) {
-	expirationAccessTime := time.Now().Add(5 * time.Minute)
-	expirationRefreshTime := time.Now().Add(1 * time.Hour)
+	expirationAccessTime := time.Now().Add(15 * time.Minute)
+	expirationRefreshTime := time.Now().Add(72 * time.Hour)
 
 	accessClaims := &Claims{
 		ID:       user.ID,
@@ -54,7 +56,7 @@ func GenerateJWT(user models.User) (string, string, error) {
 	return accessTokenString, refreshTokenString, nil
 }
 
-func ValidateJWT(tokenString string) (int, error) {
+func ValidateJWT(tokenString string) (int, int, string) {
 	claims := &Claims{}
 
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
@@ -63,39 +65,50 @@ func ValidateJWT(tokenString string) (int, error) {
 	if err != nil {
 		if ve, ok := err.(*jwt.ValidationError); ok {
 			if ve.Errors&jwt.ValidationErrorMalformed != 0 {
-				return 0, errors.New("token is malformed")
+				return 0, http.StatusBadRequest, consts.ErrTokenMalformed
 			} else if ve.Errors&jwt.ValidationErrorExpired != 0 {
-				return 0, errors.New("token is expired")
+				return 0, http.StatusUnauthorized, consts.ErrTokenExpired
 			} else if ve.Errors&jwt.ValidationErrorNotValidYet != 0 {
-				return 0, errors.New("token is not valid yet")
+				return 0, http.StatusUnauthorized, consts.ErrTokenNotValid
 			} else {
-				return 0, errors.New("could not handle this token: " + err.Error())
+				return 0, http.StatusInternalServerError, consts.ErrNotHandleForToken
 			}
 		}
-		return 0, errors.New("could not handle this token: " + err.Error())
+		return 0, http.StatusBadRequest, consts.ErrNotHandleForToken
 	}
 
 	if !token.Valid {
-		return 0, errors.New("invalid token")
+		return 0, http.StatusBadRequest, consts.ErrInvalidToken
 	}
 
-	return claims.ID, nil
+	return claims.ID, http.StatusOK, ""
 }
 
-// func RefreshToken(refreshToken string) (string, error) {
-// 	claims := &Claims{}
+func RefreshToken(refreshToken string) (string, string, error) {
+	claims := &Claims{}
 
-// 	token, err := jwt.ParseWithClaims(refreshToken, claims, func(token *jwt.Token) (interface{}, error) {
-// 		return jwtKey, nil
-// 	})
-// 	if err != nil || !token.Valid {
-// 		return "", errors.New("invalid token")
-// 	}
+	token, err := jwt.ParseWithClaims(refreshToken, claims, func(token *jwt.Token) (interface{}, error) {
+		return jwtKey, nil
+	})
+	if err != nil || !token.Valid {
+		return "", consts.ErrInvalidToken, fmt.Errorf(consts.InternalTokenInvalid)
+	}
 
-// 	newAccessToken, _, err := GenerateJWT(claims.Email)
-// 	if err != nil {
-// 		return "", err
-// 	}
+	expirationAccessTime := time.Now().Add(15 * time.Minute)
+	newAccessClaims := &Claims{
+		ID:       claims.ID,
+		Email:    claims.Email,
+		Username: claims.Username,
+		StandardClaims: jwt.StandardClaims{
+			ExpiresAt: expirationAccessTime.Unix(),
+		},
+	}
 
-// 	return newAccessToken, nil
-// }
+	newAccessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, newAccessClaims)
+	accessTokenString, err := newAccessToken.SignedString(jwtKey)
+	if err != nil {
+		return "", consts.ErrInternalServer, err
+	}
+
+	return accessTokenString, "", nil
+}

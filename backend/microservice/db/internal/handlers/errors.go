@@ -1,15 +1,15 @@
 package handlers
 
 import (
+	"InterestingChats/backend/microservice/db/internal/logger"
 	"InterestingChats/backend/microservice/db/internal/models"
-	"log"
 	"net/http"
 )
 
-func ErrorHandler(w http.ResponseWriter, statusCode int, errMsg []string, logMsg string) {
+func ErrorHandler(w http.ResponseWriter, statusCode int, log logger.Logger, errMsg []string, logMsg error) {
 	SendRespond(w, statusCode, &models.Response{
 		Data:   nil,
 		Errors: errMsg,
 	})
-	log.Println(logMsg)
+	log.Warn(logMsg)
 }

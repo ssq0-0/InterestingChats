@@ -2,30 +2,29 @@ package utils
 
 import (
 	"bytes"
+	"chat_service/internal/consts"
+	"chat_service/internal/models"
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
+	"strings"
 	"time"
 )
 
-func ProxyRequest(method, url string, data interface{}, expectedStatusCode int) ([]byte, int, error) {
-	log.Printf("request going to: %s", url)
+// TODO: change model return to response.
+func ProxyRequest(method, url string, data interface{}, expectedStatusCode int) ([]byte, int, string, error) {
 	var jsonData []byte
 	var err error
 	if data != nil {
 		jsonData, err = json.Marshal(data)
 		if err != nil {
-			log.Printf("failed to marshal data: %v", err)
-			return nil, http.StatusInternalServerError, fmt.Errorf("failed to marshal data: %w", err)
+			return nil, http.StatusInternalServerError, consts.ErrInternalServer, fmt.Errorf(consts.InternalInvalidValueFormat, err)
 		}
 	}
-
 	req, err := http.NewRequest(method, url, bytes.NewBuffer(jsonData))
 	if err != nil {
-		log.Printf("failed to create new request: %v", err)
-		return nil, http.StatusInternalServerError, fmt.Errorf("failed to create new request: %w", err)
+		return nil, http.StatusInternalServerError, consts.ErrInternalServer, fmt.Errorf(consts.InternalFailedProxyRequest, err)
 	}
 	req.Header.Add("Content-Type", "application/json")
 
@@ -34,20 +33,32 @@ func ProxyRequest(method, url string, data interface{}, expectedStatusCode int) 
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Printf("failed to send request: %v", err)
-		return nil, http.StatusInternalServerError, fmt.Errorf("failed to send request: %w", err)
+		return nil, http.StatusInternalServerError, consts.ErrInternalServer, fmt.Errorf(consts.InternalFailedProxyRequest, err)
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusNoContent {
+		if resp.StatusCode != expectedStatusCode {
+			return nil, resp.StatusCode, consts.ErrUnexpectedStatucCode, fmt.Errorf(consts.InternalUnexpectedStatucCode, resp.StatusCode)
+		}
+		return nil, resp.StatusCode, "", nil
+	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, http.StatusInternalServerError, fmt.Errorf("failed to read response body: %w", err)
+		return nil, http.StatusInternalServerError, consts.ErrInternalServer, fmt.Errorf(consts.InternalFailedProxyRequest, err)
 	}
-	log.Printf("response body: %s", string(body))
+
+	var response *models.Response
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, http.StatusInternalServerError, consts.ErrInternalServer, fmt.Errorf(consts.InternalInvalidValueFormat, err)
+	}
 
 	if resp.StatusCode != expectedStatusCode {
-		return body, resp.StatusCode, fmt.Errorf("received unexpected status code: %d, body: %s", resp.StatusCode, string(body))
+		if len(response.Errors) > 0 {
+			return body, resp.StatusCode, strings.Join(response.Errors, "; "), fmt.Errorf(strings.Join(response.Errors, "; "))
+		}
+		return body, resp.StatusCode, consts.ErrUnexpectedStatucCode, fmt.Errorf(consts.InternalUnexpectedStatucCode, resp.StatusCode)
 	}
 
-	return body, resp.StatusCode, nil
+	return body, resp.StatusCode, "", nil
 }
