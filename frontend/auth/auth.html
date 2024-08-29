@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Authorization</title>
+    <style>
+        .form-container{
+            display: none;
+        }
+        .active{
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <button type="button" id="showLogin">Login</button>
+    <button type="button" id="showRegistration">Registration</button>
+
+    <div id="loginFormContainer" class="form-container active">
+        <h2>Login</h2>
+        <form id="loginForm">
+            <label for="emailLogin">Email</label>
+            <input type="email" name="emailLogin" id="emailLogin" autocomplete="email">
+
+            <label for="passwordLogin">Password</label>
+            <input type="password" name="passwordLogin" id="passwordLogin" autocomplete="current-password">
+
+            <button type="submit" id="login">Login</button>
+        </form>
+    </div>
+
+    <div id="registrationFormContainer" class="form-container">
+        <h2>Regstration</h2>
+        <form id="registrationForm">
+            <label for="username">Username</label>
+            <input type="text" id="username" name="username">
+    
+            <label for="email">Email</label>
+            <input type="email" id="email" name="email">
+    
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password">
+
+            <button type="submit" id="registration">Registration</button>
+        </form>
+    </div>
+
+    <script src="js/auth.js"></script>
+</body>
+</html>

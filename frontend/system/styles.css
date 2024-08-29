@@ -1,0 +1,14 @@
+.form-container {
+    display: none;
+}
+
+.form-container.active {
+    display: block;
+}
+
+#chatContainer {
+    display: block;
+    visibility: visible;
+}
+
+
