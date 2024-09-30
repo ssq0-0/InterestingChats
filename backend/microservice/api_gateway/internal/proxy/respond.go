@@ -8,9 +8,6 @@ import (
 
 func SendRespond(w http.ResponseWriter, statusCode int, log logger.Logger, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
-	// w.Header().Set("Access-Control-Allow-Origin", "*") // Разрешите ваш домен здесь, если нужно
-	// w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	// w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
 	w.WriteHeader(statusCode)
 
 	if statusCode != 204 {
