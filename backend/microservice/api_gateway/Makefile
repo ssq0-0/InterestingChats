@@ -1,18 +1,9 @@
-BINARY_NAME=Gateway
-CMD_DIR=./cmd
+.PHONY: up build down
 
-.PHONY: all build run deps clean
+IMAGE_NAME=ag
 
-all: build
+up:
+	docker compose up --build
 
 build:
-	go build -o ${BINARY_NAME} ${CMD_DIR}
-
-run: 
-	go run ${CMD_DIR}
-
-deps:
-	go mod tidy
-
-clean:
-	rm -f ${BINARY_NAME}
+	docker build -t $(IMAGE_NAME) .

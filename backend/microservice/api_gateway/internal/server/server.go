@@ -1,6 +1,7 @@
 package server
 
 import (
+	"InterestingChats/backend/api_gateway/internal/config"
 	"InterestingChats/backend/api_gateway/internal/consts"
 	"InterestingChats/backend/api_gateway/internal/logger"
 	"InterestingChats/backend/api_gateway/internal/proxy"
@@ -9,19 +10,24 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/cors"
 )
 
+// Server defines the API Gateway server structure.
 type Server struct {
-	log logger.Logger
-	App *fiber.App
+	log  logger.Logger
+	App  *fiber.App
+	Port string
 }
 
-func NewServer() *Server {
-	app := *fiber.New()
+// NewServer creates a new server instance with the specified configuration.
+func NewServer(cfg *config.Config) *Server {
+	app := fiber.New()
 	return &Server{
-		log: logger.New(logger.InfoLevel),
-		App: &app,
+		log:  logger.New(logger.InfoLevel),
+		App:  app,
+		Port: cfg.Port,
 	}
 }
 
+// Start starts the server on the specified port.
 func (s *Server) Start() {
 	s.App.Use(cors.New(cors.Config{
 		AllowOrigins:     "*",
@@ -37,6 +43,7 @@ func (s *Server) Start() {
 	}
 }
 
+// RegisterRoutes registers routes for API Gateway.
 func (s *Server) RegisterRoutes() {
 	// --------------------------------------NO PROTECT------------------------------------------------------------------------------- //
 	s.App.Post("/registration", proxy.GatewayProxyRequest(consts.SERVER_user_service, s.log))
@@ -66,7 +73,7 @@ func (s *Server) RegisterRoutes() {
 	protected.Patch("/readNotification", proxy.GatewayProxyRequest(consts.SERVER_notification_service, s.log))
 
 	// --------------------------------------FILES------------------------------------------------------------------------------- //
-	protected.Post("/saveImage", proxy.GatewayProxyRequest(consts.SERVER_file_system, s.log))
+	protected.Post("/saveImage", proxy.GatewayProxyRequest(consts.SERVER_user_service, s.log))
 
 	// --------------------------------------CHATS------------------------------------------------------------------------------- //
 	protected.Get("/getChat", proxy.GatewayProxyRequest(consts.SERVER_chat_service, s.log))

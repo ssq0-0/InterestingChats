@@ -14,12 +14,14 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// GatewayProxyRequest returns a handler to route the request through the proxy to the target server.
 func GatewayProxyRequest(target string, log logger.Logger) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		return proxyRequest(target, c, log)
 	}
 }
 
+// proxyRequest executes the request to the target server and passes the response to the client.
 func proxyRequest(target string, c *fiber.Ctx, log logger.Logger) error {
 	req := c.Request()
 	log.Infof("Proxying request to: %s", target+string(req.RequestURI()))
@@ -36,7 +38,7 @@ func proxyRequest(target string, c *fiber.Ctx, log logger.Logger) error {
 
 	if userID := c.Locals("X-User-ID"); userID != "" {
 		proxyReq.Header.Set("X-User-ID", fmt.Sprintf("%d", userID))
-		log.Infof("Added X-User-ID to proxy request: %s", userID)
+		log.Infof("Added X-User-ID to proxy request: %v", userID)
 	} else {
 		log.Warn("X-User-ID not set in context")
 	}
@@ -63,6 +65,7 @@ func proxyRequest(target string, c *fiber.Ctx, log logger.Logger) error {
 	return nil
 }
 
+// AuthenticateUser authenticates the user using another service.
 func AuthenticateUser(req *fasthttp.Request, body []byte, log logger.Logger) (int, error) {
 	authReq, err := http.NewRequest("POST", consts.SERVER_auth_service+"/auth", bytes.NewBuffer(body))
 	if err != nil {

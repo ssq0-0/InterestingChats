@@ -1,0 +1,11 @@
+{
+    "port": "8000",
+    "services": {
+        "user_service": "your_user_server",
+        "chat_service": "your_chat_server",
+        "redis_service": "your_redis_server",
+        "file_system_service": "your_file_server",
+        "notification_service": "your_notification_server",
+        "auth_service": "your_auth_server"
+    }
+}

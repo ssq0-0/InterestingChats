@@ -1,5 +1,6 @@
 package consts
 
+// Error messages used for client-facing errors.
 const (
 	ErrInternalServerError  = "Internal server error"
 	ErrUnexpectedStatucCode = "Unexpected status code"
@@ -8,6 +9,7 @@ const (
 	ErrUnsupportedType      = "Unsuported format"
 )
 
+// Internal error messages used by the server for logging and debugging.
 const (
 	InternalServerError          = "internal server error: %w"
 	InternalInvalidValueFormat   = "invalid value format: %v"

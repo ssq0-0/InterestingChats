@@ -11,6 +11,7 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// AuthMiddleware performs user authorisation checks before accessing protected routes.
 func AuthMiddleware(log logger.Logger) fiber.Handler {
 	return func(ctx *fiber.Ctx) error {
 		token := ctx.Get("Authorization")
