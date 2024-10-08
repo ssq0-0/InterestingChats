@@ -5,6 +5,7 @@ import (
 	"InterestingChats/backend/api_gateway/internal/consts"
 	"InterestingChats/backend/api_gateway/internal/logger"
 	"InterestingChats/backend/api_gateway/internal/proxy"
+	"fmt"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -37,8 +38,8 @@ func (s *Server) Start() {
 	}))
 	s.RegisterRoutes()
 
-	s.log.Info("gateway server running on 800!")
-	if err := s.App.Listen(":8000"); err != nil {
+	s.log.Info("gateway server running on: %s!", s.Port)
+	if err := s.App.Listen(fmt.Sprintf(":%s", s.Port)); err != nil {
 		s.log.Panic(err)
 	}
 }
