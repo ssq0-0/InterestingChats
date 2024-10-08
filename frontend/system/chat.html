@@ -4,6 +4,34 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chat</title>
+    <style>
+    .user-avatar, .message-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #ddd;
+    color: #333;
+    font-size: 18px;
+    font-weight: bold;
+    text-align: center;
+    overflow: hidden;
+}
+
+.user-avatar img, .message-avatar img {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+}
+
+.user-avatar img, .message-avatar img {
+    display: block;
+}
+
+
+    </style>
 </head>
 <body>
     <nav>
@@ -17,6 +45,6 @@
         <button id="sendMsg">Send</button>
     </div>
 
-    <script src="js/chat.js"></script>
+    <script type="module" src="js/chat.js"></script>
 </body>
 </html>

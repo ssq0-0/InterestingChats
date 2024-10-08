@@ -4,15 +4,59 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Create chat</title>
+    <style>
+/* Стили для кнопки выпадающего списка */
+.dropdown-btn {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background-color: #fff;
+    cursor: pointer;
+    text-align: left;
+    position: relative;
+    z-index: 2; /* Для того чтобы кнопка была выше списка */
+}
+
+/* Стили для содержимого выпадающего списка */
+.dropdown-content {
+    display: none;
+    position: absolute;
+    background-color: #fff;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    width: 100%;
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 1; /* Для того чтобы список был под кнопкой */
+    top: 100%; /* Позиционирование непосредственно под кнопкой */
+    left: 0;
+}
+
+/* Стили для каждого элемента списка */
+.dropdown-content label {
+    display: block;
+    padding: 10px;
+    cursor: pointer;
+}
+    </style>
 </head>
 <body>
-    <div id="createChatFrom">
+    <div id="createChatForm">
         <label for="chatname">Chat name</label>
         <input type="text" id="chatname" name="chatname">
 
-        <label for="mebmers">mebmers</label>
-        <input type="text" id="members" name="members">
+        <label for="members">Members</label>
+        <div class="dropdown">
+            <button class="dropdown-btn">Select Members</button>
+            <div class="dropdown-content" id="membersContainer"></div>
+        </div>
         
+        <div id="tagsContainer">
+            <input type="text" id="hashtags" placeholder="Введите тег и нажмите Enter">
+            <ul id="tagsList"></ul>
+        </div>
+
         <button id="create">Create</button>
         <button id="back">Back</button>
     </div>

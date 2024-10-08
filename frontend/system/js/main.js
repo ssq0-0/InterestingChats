@@ -5,6 +5,8 @@ import { joinToChat } from './joinChats.js';
 import { fetchMyChats } from './my_chats.js';
 import { fetchUserProfile } from './profile.js';
 import { logout } from './exitSystem.js';
+import {fetchNotifications} from './notification.js';
+import {loadFriends} from './friends.js';
 import './navbar.js';
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -57,6 +59,16 @@ function setupEventListeners() {
         switchToContainer('myChat');
         fetchMyChats();
     })
+
+    document.getElementById('notifications').addEventListener('click', () => {
+        switchToContainer('notifications');
+        fetchNotifications();
+    });
+
+    document.getElementById('friends').addEventListener('click', ()=>{
+        switchToContainer('friends');
+        loadFriends(1);
+    })
 }
 
 function handleInitialView() {
@@ -75,7 +87,9 @@ export function switchToContainer(activeContainer) {
         profile: document.getElementById('userInfoContainer'),
         chat: document.getElementById('chatContainer'),
         myChat: document.getElementById('myChatsContainer'),
-        userSearch: document.getElementById('userSearchContainer')
+        userSearch: document.getElementById('userSearchContainer'),
+        notifications: document.getElementById('notificationsContainer'),
+        friends: document.getElementById('friendsContainer')
     };
 
     Object.keys(containers).forEach(key => {
@@ -91,3 +105,4 @@ export function switchToContainer(activeContainer) {
         }
     });
 }
+

@@ -1,68 +1,5 @@
-// document.addEventListener('DOMContentLoaded', async function(){
-//     const token = localStorage.getItem('access_token');
-//     const urlParams = new URLSearchParams(window.location.search);
-//     const chatID = urlParams.get('chatID');  
-//     try {
-//         const response = await fetch(`http://localhost:8000/getChat?chatID=${chatID}&Authorization=${token}`, {
-//             method:'GET',
-//             headers:{
-//                 'Content-Type':'application:json'
-//             }
-//         });
 
-//         if (!response.ok) {
-//             console.log(error);
-//         }
-
-//         const {Data, Errors } = await response.json();
-//         console.log(Data);
-//         showInfo(Data);
-//         const chatContainer = document.getElementById('chatContainer');
-//         chatContainer._socket
-//     } catch(error) {
-//         console.log(error);
-//     }
-// })
-
-// function showInfo(data) {
-//     const chatContainer = document.getElementById('chatContainer');
-//     chatContainer.innerHTML =  `
-//     <h1>${data.chat_name}</h1>
-//     <h2>Members:</h2>
-//     <ul>
-//         ${Object.values(data.members).map(member => `
-//             <li><a href="user_profile.html?userID=${member.id}">${member.username} (${member.email})</a></li>
-//         `).join('')}
-//     </ul>
-//     <h2>Messages:</h2>
-//     <ul id="messagesList">
-//         ${data.messages && data.messages.length > 0 ? 
-//             data.messages.map(message => `
-//                 <li>
-//                     <strong>User ${message.user.username}:</strong> ${message.body} <em>(${new Date(message.time).toLocaleString()})</em>
-//                 </li>
-//             `).join('') :
-//             '<li>No messages in this chat.</li>'}
-//     </ul>
-//     <label for="message">Write message...</label>
-//     <input type="text" id="messageInput" name="message">
-//     <button type="submit" id="sendMsg">Send message</button>
-// `;
-// }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+import { fetchWithToken } from './tokenUtils.js'; // Импортируем функцию fetchWithToken
 
 document.addEventListener('DOMContentLoaded', () => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -84,6 +21,7 @@ async function showChatByID(chatID) {
 
     try {
         const chatData = await fetchChatData(chatID, token);
+        console.log("data",chatData);
         displayChatData(chatData);
 
         socket = initializeWebSocket(chatID, token);
@@ -97,12 +35,12 @@ async function showChatByID(chatID) {
     }
 
     return socket;
-}
+} 
 
 // Fetch chat data from server
 async function fetchChatData(chatID, token) {
     try {
-        const response = await fetch(`http://localhost:8000/getChat?chatID=${chatID}&Authorization=${token}`, {
+        const response = await fetchWithToken(`http://localhost:8000/getChat?chatID=${chatID}&Authorization=${token}`, {
             method: 'GET',
             headers: { 'Content-Type': 'application/json' }
         });
@@ -113,23 +51,112 @@ async function fetchChatData(chatID, token) {
     }
 }
 
-// Initialize WebSocket connection
-function initializeWebSocket(chatID, token) {
-    const wsUrl = `ws://localhost:8004/wsOpen?chatID=${chatID}&Authorization=${token}`;
-    console.log('WebSocket URL:', wsUrl); // Логируем WebSocket URL
-    return new WebSocket(wsUrl);
+// Обновленный метод для инициализации WebSocket
+async function initializeWebSocket(chatID, token) {
+    const userID = await authorizeUser(token);
+    if (userID) {
+        const wsUrl = `ws://localhost:8004/wsOpen?chatID=${chatID}&userID=${userID}`;
+        const socket = new WebSocket(wsUrl);
+
+        socket.onopen = function() {
+            console.log('WebSocket connection established');
+            // Теперь мы можем безопасно отправлять сообщения
+            chatContainer._socket = socket; // Сохраняем сокет только после открытия
+            setupSocketListeners(socket);
+        };
+
+        socket.onerror = function(event) {
+            console.error('WebSocket error:', event);
+        };
+
+        return socket;
+    } else {
+        console.error('User authorization failed');
+        return null;
+    }
 }
+
+// Обновленный метод для отправки сообщения
+function handleSendMessage() {
+    const messageBody = document.getElementById('messageInput').value.trim();
+    const chatContainer = document.getElementById('chatContainer');
+    const socket = chatContainer._socket;
+    const urlParams = new URLSearchParams(window.location.search);
+    const chatID = urlParams.get('chatID');
+    if (messageBody) {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            const messageData = {
+                id: 1, // Возможно, стоит генерировать ID на сервере
+                body: messageBody,
+                chat_id: parseInt(chatID),
+                user: {
+                    id: parseInt(localStorage.getItem('id')),
+                    email: localStorage.getItem('email'),
+                    username: localStorage.getItem('username'),
+                    avatar: localStorage.getItem('avatar') // добавляем аватар, если нужно
+                },
+                time: new Date().toISOString()
+            };
+
+            socket.send(JSON.stringify(messageData));
+            document.getElementById('messageInput').value = ''; // Очищаем поле ввода
+        } else {
+            console.error('WebSocket is not ready. Current state:', socket ? socket.readyState : 'undefined');
+        }
+    } else {
+        console.warn('Message input is empty');
+    }
+}
+
+
+async function authorizeUser(token) {
+    try {
+        const response = await fetchWithToken(`http://localhost:8000/auth`, {
+            method: 'POST',
+            headers: { 'Authorization': token }
+        });
+        const result = await response.json();
+
+        if (result.Data) {
+            console.log('User authorized with ID:', result.Data);
+            return result.Data;  // Вернем userID
+        } else {
+            console.error('Authorization failed:', result.Errors);
+            return null;
+        }
+    } catch (error) {
+        console.error('Error during authorization:', error);
+        return null;
+    }
+}
+
 
 // Setup WebSocket event listeners
 function setupSocketListeners(socket) {
+    // Обработчик ошибок
     socket.addEventListener('error', error => {
-        console.error('WebSocket error:', error);
+        console.error('WebSocket error occurred:', error);
+
+        // Дополнительное логирование для отладки
+        if (socket.readyState === WebSocket.CLOSED) {
+            console.error('WebSocket connection closed unexpectedly');
+        } else if (socket.readyState === WebSocket.CLOSING) {
+            console.warn('WebSocket connection is closing');
+        } else if (socket.readyState === WebSocket.CONNECTING) {
+            console.warn('WebSocket connection is still in the process of connecting');
+        }
     });
 
-    socket.addEventListener('close', () => {
-        console.log('WebSocket connection closed');
+    // Обработчик закрытия соединения
+    socket.addEventListener('close', event => {
+        if (event.wasClean) {
+            console.log(`WebSocket connection closed cleanly, code=${event.code}, reason=${event.reason}`);
+        } else {
+            console.error('WebSocket connection died unexpectedly');
+        }
     });
 
+    // Обработчик сообщений
     socket.addEventListener('message', event => {
         handleIncomingMessage(event.data);
     });
@@ -179,23 +206,56 @@ function displayChatData(data) {
     if (data.creator == localStorage.getItem('id')) {
         addManageChatButton(data.id, data.members);
     }
+
+    const leaveChatButton = document.getElementById('leaveChatBtn');
+    
+    if (leaveChatButton) {
+        leaveChatButton.addEventListener('click', async () => {
+            const chatID = new URLSearchParams(window.location.search).get('chatID');
+            const userID = localStorage.getItem('id');
+            
+            if (chatID && userID) {
+                await leaveChat(chatID, userID);
+            } else {
+                console.error('Chat ID or User ID not found');
+            }
+        });
+    }
+}
+
+function getInitials(username) {
+    const names = username.split(' ');
+    return names.map(name => name.charAt(0)).join('').toUpperCase();
 }
 
 function generateChatHTML(data) {
+    const currentUserId = parseInt(localStorage.getItem('id')); // Получаем текущего пользователя из localStorage
+    
     return `
         <h1>${data.chat_name}</h1>
         <h2>Members:</h2>
         <ul>
             ${Object.values(data.members).map(member => `
-                <li><a href="user_profile.html?userID=${member.id}">${member.username} (${member.email})</a></li>
+                <li>
+                    <div class="user-avatar" title="${member.username}">
+                        ${member.avatar ? `<img src="${member.avatar}" alt="${member.username}">` : getInitials(member.username)}
+                    </div>
+                    <a href="user_profile.html?userID=${member.id}">
+                        ${member.username} (${member.email})
+                    </a>
+                </li>
             `).join('')}
         </ul>
+        ${data.members[currentUserId] ? `<button id="leaveChatBtn">Выйти из чата</button>` : ''}
         <h2>Messages:</h2>
         <ul id="messagesList">
             ${data.messages && data.messages.length > 0 ? 
                 data.messages.map(message => `
                     <li>
-                        <strong>User ${message.user.username}:</strong> ${message.body} <em>(${new Date(message.time).toLocaleString()})</em>
+                        <div class="message-avatar" title="${message.user.username}">
+                            ${message.user.avatar ? `<img src="${message.user.avatar}" alt="${message.user.username}">` : getInitials(message.user.username)}
+                        </div>
+                        <strong>${message.user.username}:</strong> ${message.body} <em>(${new Date(message.time).toLocaleString()})</em>
                     </li>
                 `).join('') :
                 '<li>No messages in this chat.</li>'}
@@ -205,6 +265,9 @@ function generateChatHTML(data) {
         <button type="submit" id="sendMsg">Send message</button>
     `;
 }
+
+
+
 
 // Setup message button event listener
 async function setupMsgButton() {
@@ -233,36 +296,40 @@ async function setupMsgButton() {
 }
 
 // Handle sending a message
-function handleSendMessage() {
-    const messageBody = document.getElementById('messageInput').value.trim();
-    const chatContainer = document.getElementById('chatContainer');
-    const socket = chatContainer._socket;
+// function handleSendMessage() {
+//     const messageBody = document.getElementById('messageInput').value.trim();
+//     const chatContainer = document.getElementById('chatContainer');
+//     const socket = chatContainer._socket;
 
-    if (messageBody) {
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            // Log WebSocket state and URL before sending the message
-            console.log('WebSocket state before sending message:', socket.readyState);
-            console.log('WebSocket URL:', socket.url || 'URL not available'); // Если URL не доступен, используем заглушку
+//     const urlParams = new URLSearchParams(window.location.search);
+//     const chatID = urlParams.get('chatID');
 
-            const messageData = {
-                body: messageBody,
-                user: {
-                    id: parseInt(localStorage.getItem('id')), 
-                    email: localStorage.getItem('email'), 
-                    username: localStorage.getItem('username')
-                },
-                time: new Date().toISOString()
-            };
+//     if (messageBody) {
+//         if (socket && socket.readyState === WebSocket.OPEN) {
+//             // Log WebSocket state and URL before sending the message
+//             console.log('WebSocket state before sending message:', socket.readyState);
+//             console.log('WebSocket URL:', socket.url || 'URL not available'); // Если URL не доступен, используем заглушку
 
-            socket.send(JSON.stringify(messageData));
-            document.getElementById('messageInput').value = '';
-        } else {
-            console.error('WebSocket is not ready. Current state:', socket ? socket.readyState : 'undefined');
-        }
-    } else {
-        console.warn('Message input is empty');
-    }
-}
+//             const messageData = {
+//                 body: messageBody,
+//                 chat_id: parseInt(chatID),
+//                 user: {
+//                     id: parseInt(localStorage.getItem('id')), 
+//                     email: localStorage.getItem('email'), 
+//                     username: localStorage.getItem('username')
+//                 },
+//                 time: new Date().toISOString()
+//             };
+
+//             socket.send(JSON.stringify(messageData));
+//             document.getElementById('messageInput').value = '';
+//         } else {
+//             console.error('WebSocket is not ready. Current state:', socket ? socket.readyState : 'undefined');
+//         }
+//     } else {
+//         console.warn('Message input is empty');
+//     }
+// }
 
 // Append a message to the chat
 function appendMessage(message) {
@@ -283,13 +350,15 @@ function appendMessage(message) {
 
     const messageHTML = `
         <li>
-            <strong>User ${message.user.username}:</strong> ${message.body} <em>(${new Date(message.time).toLocaleString()})</em>
+            <img src="${message.user.avatar || 'default-avatar.png'}" alt="${message.user.username}" class="message-avatar">
+            <strong>${message.user.username}:</strong> ${message.body} <em>(${new Date(message.time).toLocaleString()})</em>
         </li>
     `;
     console.log('Message to insert:', messageHTML);
 
     messageList.insertAdjacentHTML('beforeend', messageHTML);
 }
+
 
 document.getElementById('back').addEventListener('click', () => {
     window.location.href = 'main.html';
@@ -309,4 +378,25 @@ function addManageChatButton(chatID, members) {
         localStorage.setItem(chatID, JSON.stringify(members))
         window.location.href = `./manageChat.html?chatID=${chatID}`;
     });
+}
+
+async function leaveChat(chatID, userID) {
+    try {
+        const response = await fetchWithToken('http://localhost:8000/leaveChat', {
+            method: 'DELETE',
+            body: JSON.stringify([{ chat_id: parseInt(chatID), user_id: parseInt(userID) }])
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            console.log('Successfully left the chat');
+            // Перенаправляем пользователя на главную страницу после успешного выхода
+            window.location.href = 'main.html';
+        } else {
+            console.error('Error leaving chat:', result.Errors);
+        }
+    } catch (error) {
+        console.error('Error while leaving chat:', error);
+    }
 }

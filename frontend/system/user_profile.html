@@ -4,6 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>User Profile</title>
+    <style>
+        .profile-info {
+            display: flex;
+            align-items: center;
+        }
+
+        .profile-avatar {
+            width: 50px; /* Размер аватара */
+            height: 50px;
+            border-radius: 50%;
+            margin-right: 15px; /* Отступ между аватаром и текстом */
+            object-fit: cover; /* Обеспечивает корректное отображение изображения в круге */
+        }
+    </style>
 </head>
 <body>
     <button id="backButton">Back</button>
