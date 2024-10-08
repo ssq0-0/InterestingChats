@@ -8,6 +8,8 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// SendError sends an error message to the WebSocket client.
+// It creates a WSError model, marshals it to JSON, and writes it to the connection.
 func SendError(conn *websocket.Conn, msg string) {
 	errMsg := &models.WSError{
 		Type:    "error",

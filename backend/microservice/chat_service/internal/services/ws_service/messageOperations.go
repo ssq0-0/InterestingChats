@@ -1,21 +1,19 @@
 package ws_service
 
 import (
-	"chat_service/internal/consts"
 	"chat_service/internal/logger"
 	"chat_service/internal/models"
-	"chat_service/internal/utils"
 	"encoding/json"
 	"fmt"
 	"log"
-	"net/http"
 	"time"
 
 	"github.com/gorilla/websocket"
 )
 
+// MessageReading sends a message to the connected WebSocket client.
+// It marshals the message to JSON and writes it to the WebSocket connection.
 func MessageReading(client *websocket.Conn, chat *models.Chat, msg *models.Message) error {
-	log.Printf("сообщение читается: %+v", msg)
 	msgBytes, err := json.Marshal(msg)
 	if err != nil {
 		return err
@@ -30,6 +28,8 @@ func MessageReading(client *websocket.Conn, chat *models.Chat, msg *models.Messa
 	return nil
 }
 
+// MessageRecording reads a message from the WebSocket connection.
+// It unmarshals the received message and validates the user against the chat members.
 func MessageRecording(conn *websocket.Conn, chat *models.Chat, log logger.Logger) (*models.Message, error) {
 	_, p, err := conn.ReadMessage()
 	if err != nil {
@@ -54,12 +54,15 @@ func MessageRecording(conn *websocket.Conn, chat *models.Chat, log logger.Logger
 
 	log.Infof("message was recording")
 	return &models.Message{
-		Body: message.Body,
-		User: message.User,
-		Time: time.Now(),
+		Body:   message.Body,
+		User:   message.User,
+		Time:   time.Now(),
+		ChatID: message.ChatID,
 	}, nil
 }
 
+// IsValidMessage validates a message before processing it.
+// It checks that the message body is non-empty and that the user is a member of the chat.
 func IsValidMessage(msg *models.Message, chat *models.Chat) bool {
 	chat.Mu.RLock()
 	defer chat.Mu.RUnlock()
@@ -69,13 +72,4 @@ func IsValidMessage(msg *models.Message, chat *models.Chat) bool {
 		}
 	}
 	return false
-}
-
-func SaveMessage(msg *models.Message, chatID int) (*models.Response, error) {
-	// TODO: if response....
-	if _, _, _, err := utils.ProxyRequest(consts.POST_Method, fmt.Sprintf(consts.DB_SaveMessage, chatID), msg, http.StatusOK); err != nil {
-		return nil, err
-	}
-	log.Println("сообщение отправлено в базу данных")
-	return nil, nil
 }

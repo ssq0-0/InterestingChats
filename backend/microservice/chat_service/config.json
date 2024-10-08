@@ -1,0 +1,18 @@
+{
+  "server": {
+    "host": "your_host",
+    "port": "8004"
+  },
+    "kafka": {
+      "bootstrapServers": "your_kafka_address",
+      "topics": [
+        "message_operation"
+      ]
+    },
+    "logging": {
+      "level": "info"
+    },
+    "services": {
+      "db_service": "your_db_server"
+    }
+  }

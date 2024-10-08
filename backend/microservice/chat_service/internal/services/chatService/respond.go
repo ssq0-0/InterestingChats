@@ -6,6 +6,8 @@ import (
 	"net/http"
 )
 
+// SendRespond sends a JSON response to the HTTP request.
+// It sets the content type and writes the response status code and data.
 func SendRespond(w http.ResponseWriter, statusCode int, log logger.Logger, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 

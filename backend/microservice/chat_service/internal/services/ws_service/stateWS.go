@@ -11,8 +11,10 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// PrepareWS prepares the WebSocket connection for the given chat.
+// It retrieves the chat history and initializes the chat if it doesn't already exist.
 func PrepareWS(w http.ResponseWriter, r *http.Request, chats map[string]*models.Chat) (*models.Chat, int, string, error) {
-	chatHistory, statusCode, clientErr, err := chatservice.GetChatHistory(r)
+	chatHistory, statusCode, clientErr, err := chatservice.GetChatHistory(r, 1)
 	if err != nil {
 		return nil, statusCode, clientErr, err
 	}
@@ -38,6 +40,8 @@ func PrepareWS(w http.ResponseWriter, r *http.Request, chats map[string]*models.
 	return chatHistory, http.StatusOK, "", nil
 }
 
+// OpenWS upgrades the HTTP connection to a WebSocket connection.
+// It adds the new client to the chat's client list.
 func OpenWS(w http.ResponseWriter, r *http.Request, chat *models.Chat, upgrader *websocket.Upgrader) (*websocket.Conn, string, error) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -54,6 +58,7 @@ func OpenWS(w http.ResponseWriter, r *http.Request, chat *models.Chat, upgrader 
 	return conn, "", nil
 }
 
+// CloseWS closes the WebSocket connection and removes the client from the chat's client list.
 func CloseWS(chat *models.Chat, conn *websocket.Conn) {
 	chat.Mu.Lock()
 	delete(chat.Clients, conn)

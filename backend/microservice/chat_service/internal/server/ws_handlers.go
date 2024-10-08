@@ -5,9 +5,7 @@ import (
 	"chat_service/internal/models"
 	chatservice "chat_service/internal/services/chatService"
 	"chat_service/internal/services/ws_service"
-	"crypto/sha256"
 	"fmt"
-	"log"
 	"net/http"
 	"sync"
 
@@ -18,9 +16,12 @@ type WS struct {
 	Upgrader *websocket.Upgrader
 	Chats    map[string]*models.Chat
 	Mu       *sync.RWMutex
+	Producer *ws_service.Producer
 	log      logger.Logger
 }
 
+// ChatWebsocket handles the WebSocket connection for a chat.
+// It prepares the WebSocket, opens the connection, and processes incoming messages.
 func (ws *WS) ChatWebsocket(w http.ResponseWriter, r *http.Request) {
 	ws.Mu.Lock()
 	chat, statusCode, userMsg, err := ws_service.PrepareWS(w, r, ws.Chats)
@@ -36,10 +37,8 @@ func (ws *WS) ChatWebsocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer conn.Close()
-	ws.log.Infof("Connection open, addr: %s", conn.RemoteAddr())
 
 	go ws.Receiver(chat, conn)
-	ws.log.Infof("connections now: %+v", chat.Clients)
 	for {
 		msg, err := ws_service.MessageRecording(conn, chat, ws.log)
 		if err != nil {
@@ -51,18 +50,18 @@ func (ws *WS) ChatWebsocket(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		if response, err := ws_service.SaveMessage(msg, chat.ID); err != nil {
-			ws_service.SendError(conn, fmt.Sprintf("error save message: %v", response.Errors))
+		if err := ws.Producer.Writer(msg); err != nil {
+			ws_service.SendError(conn, "error save message")
 			continue
 		}
 
 		chat.Broadcast <- *msg
-		ws.log.Infof("Message sent to Broadcast: %+v", msg)
 	}
 	ws_service.CloseWS(chat, conn)
-	ws.log.Infof("connections without cycle: %+v", chat.Clients)
 }
 
+// isMessageValid checks if a message is valid for the given chat and connection.
+// It verifies whether the user is a member of the chat.
 func (ws *WS) isMessageValid(msg *models.Message, chat *models.Chat, conn *websocket.Conn) bool {
 	ws.Mu.RLock()
 	defer ws.Mu.RUnlock()
@@ -74,42 +73,31 @@ func (ws *WS) isMessageValid(msg *models.Message, chat *models.Chat, conn *webso
 	return true
 }
 
+// Receiver listens for broadcast messages from the chat and sends them to all connected clients.
+// It also handles closed connections by removing clients from the chat.
 func (ws *WS) Receiver(chat *models.Chat, conn *websocket.Conn) {
 	for msg := range chat.Broadcast {
-		ws.log.Infof("Message received from Broadcast: %+v", msg)
-		hash := sha256.Sum256([]byte(msg.Body))
-		ws.log.Infof("Message ID: %x", hash)
-		ws.log.Infof("сообщение в ресивере")
+		ws.Mu.RLock()
+		for client := range chat.Clients {
+			if client == nil || client.WriteMessage(websocket.PingMessage, nil) != nil {
+				ws.log.Infof("delete client with closed connection")
+				ws.Mu.RUnlock()
+				ws.handleClientError(chat, client, fmt.Errorf("connection closed"))
+				ws.Mu.RLock()
+				continue
+			}
 
-		clients := ws.filterClients(chat, conn)
-		log.Printf("After filtering, clients count: %d", len(clients))
-
-		for _, client := range clients {
 			if err := ws_service.MessageReading(client, chat, &msg); err != nil {
+				ws.log.Errorf("failed sent message: %v", err)
 				ws.handleClientError(chat, client, err)
 			}
-			ws.log.Infof("сообщение прочитано")
 		}
+		ws.Mu.RUnlock()
 	}
 }
 
-func (ws *WS) filterClients(chat *models.Chat, conn *websocket.Conn) []*websocket.Conn {
-	ws.Mu.RLock()
-	defer ws.Mu.RUnlock()
-	log.Println("функция filterClients вызвана из Receiver")
-	clients := make([]*websocket.Conn, 0, len(chat.Clients))
-	for client := range chat.Clients {
-		log.Printf("Before filtering, clients count: %d", len(chat.Clients))
-		// TODO
-		// if client != conn {
-		clients = append(clients, client)
-		ws.log.Infof("Client added: %+v", ws)
-		// }
-	}
-	log.Println("клиенты возвращаются в Receiver")
-	return clients
-}
-
+// handleClientError handles errors related to a specific client.
+// It sends an error message to the client and removes the client from the chat.
 func (ws *WS) handleClientError(chat *models.Chat, client *websocket.Conn, err error) {
 	ws_service.SendError(client, fmt.Sprintf("failed reading message: %v", err))
 	ws.Mu.Lock()
