@@ -6,7 +6,8 @@ import (
 	"net/http"
 )
 
-func HandleError(w http.ResponseWriter, statusCode int, errors []string, logMsg string) {
+// HandleError sends a JSON error response to the client and logs the error message.
+func HandleError(w http.ResponseWriter, statusCode int, errors []string, logMsg error) {
 	SendRespond(w, statusCode, &models.Response{
 		Errors: errors,
 		Data:   nil,

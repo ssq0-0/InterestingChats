@@ -6,6 +6,7 @@ import (
 	"net/http"
 )
 
+// SendRespond sends a JSON response to the client with the specified status code and data.
 func SendRespond(w http.ResponseWriter, statusCode int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)

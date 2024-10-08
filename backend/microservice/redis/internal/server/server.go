@@ -10,18 +10,19 @@ import (
 )
 
 type Server struct {
-	rMux        *mux.Router
-	rdb         *rdb.RedisClient
-	log         logger.Logger
-	userHandler *handlers.UserHandler
+	rMux    *mux.Router
+	rdb     *rdb.RedisClient
+	log     logger.Logger
+	Handler handlers.Handler
 }
 
 func NewServer(rdbClient *rdb.RedisClient) *Server {
+	log := logger.New(logger.InfoLevel)
 	return &Server{
-		rMux:        mux.NewRouter(),
-		rdb:         rdbClient,
-		log:         logger.New(logger.InfoLevel),
-		userHandler: handlers.NewUserHandler(rdbClient, logger.New(logger.InfoLevel)),
+		rMux:    mux.NewRouter(),
+		rdb:     rdbClient,
+		log:     logger.New(logger.InfoLevel),
+		Handler: handlers.NewHandler(rdbClient, &log),
 	}
 }
 
@@ -35,7 +36,7 @@ func (s *Server) Start() {
 }
 
 func (s *Server) RegisterHandler() {
-	s.rMux.HandleFunc("/user", s.userHandler.GetUsersTokens).Methods("GET")
-	s.rMux.HandleFunc("/setToken", s.userHandler.SetTokens).Methods("POST")
-	s.rMux.HandleFunc("/deleteTokens", s.userHandler.DeleteTokens).Methods("DELETE")
+	s.rMux.HandleFunc("/getSession", s.Handler.GetSession).Methods("GET")
+	s.rMux.HandleFunc("/getFriendList", s.Handler.GetFriends).Methods("GET")
+	s.rMux.HandleFunc("/getSubscribers", s.Handler.GetSubscribers).Methods("GET")
 }
