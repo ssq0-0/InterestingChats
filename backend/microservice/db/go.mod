@@ -9,4 +9,7 @@ require (
 	golang.org/x/crypto v0.25.0
 )
 
-require golang.org/x/sys v0.22.0 // indirect
+require (
+	github.com/confluentinc/confluent-kafka-go v1.9.2
+	golang.org/x/sys v0.22.0 // indirect
+)

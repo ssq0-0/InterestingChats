@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/lib/pq"
@@ -116,9 +117,10 @@ func SelectChatMembers(chatID int, db *sql.DB) (map[int]models.User, error) {
 	chatMembers := make(map[int]models.User)
 	for memberRows.Next() {
 		var user models.User
-		if err := memberRows.Scan(&user.ID, &user.Username, &user.Email); err != nil {
+		if err := memberRows.Scan(&user.ID, &user.Username, &user.Email, &user.Avatar); err != nil {
 			return nil, fmt.Errorf(consts.InternalErrScanResult, err)
 		}
+
 		chatMembers[user.ID] = user
 	}
 
@@ -231,6 +233,65 @@ func InsertMessage(chatID, userID int, body string, tx *sql.Tx) error {
 	return nil
 }
 
+func InsertHashtag(chatID int, tag string, tx *sql.Tx) error {
+	var hashtagID int
+	err := tx.QueryRowContext(context.Background(), consts.QUERY_InsertInHashtag, tag).Scan(&hashtagID)
+	if err != nil && err != sql.ErrNoRows {
+		return fmt.Errorf("ошибка при вставке хештега: %v", err)
+	}
+
+	if err == sql.ErrNoRows {
+		err = tx.QueryRowContext(context.Background(), "SELECT id FROM hashtags WHERE name = $1", tag).Scan(&hashtagID)
+		if err != nil {
+			return fmt.Errorf("не удалось найти хештег: %v", err)
+		}
+	}
+
+	if _, err = tx.ExecContext(context.Background(), consts.QUERY_InsertInChatHashtags, chatID, hashtagID); err != nil {
+		if strings.Contains(err.Error(), "duplicate key value violates unique constraint") {
+			return fmt.Errorf(consts.InternalTagAlreadySet) // Связь уже существует, ошибок нет
+		}
+		return fmt.Errorf("ошибка при вставке связи хештега с чатом: %v", err)
+	}
+
+	return nil
+}
+
+func SelectTags(chatID string, db *sql.DB) ([]*models.Hashtag, error) {
+	tagRows, err := db.QueryContext(context.Background(), consts.QUERY_SelectTags, chatID)
+	if err != nil {
+		return nil, err
+	}
+	defer tagRows.Close()
+
+	var tagList []*models.Hashtag
+	for tagRows.Next() {
+		var tag models.Hashtag
+		if err := tagRows.Scan(&tag.ID, &tag.Hashtag); err != nil {
+			return nil, fmt.Errorf(consts.InternalErrScanResult, err)
+		}
+		tagList = append(tagList, &tag)
+	}
+
+	if err := tagRows.Err(); err != nil {
+		return nil, fmt.Errorf(consts.InternalErrIterateErrors, err)
+	}
+
+	return tagList, nil
+}
+
+func DeleteTags(tags *models.MemberRequest, tx *sql.Tx) (string, error) {
+	if len(tags.Options) == 0 {
+		return consts.ErrTagsNotFound, nil
+	}
+
+	if _, err := tx.ExecContext(context.Background(), consts.QUERY_DeleteTags, tags.ChatID, pq.Array(tags.Options)); err != nil {
+		return consts.ErrInternalServerError, fmt.Errorf("ошибка при удалении тегов: %w", err)
+	}
+
+	return "", nil
+}
+
 func CheckUserChatExists(chatID, userID int, db *sql.DB) (bool, string, error) {
 	log.Printf("userID & chatID in func: %d %d", userID, chatID)
 	var isMember bool
@@ -240,4 +301,15 @@ func CheckUserChatExists(chatID, userID int, db *sql.DB) (bool, string, error) {
 	}
 	log.Println(isMember)
 	return isMember, "", nil
+}
+
+func ChangeChatName(chatID int, chatName string, tx *sql.Tx) (string, error) {
+	if _, err := tx.ExecContext(context.Background(), consts.QUERY_ChangeChatName, chatName, chatID); err != nil {
+		if pgErr, ok := err.(*pq.Error); ok && pgErr.Code == "23505" {
+			return consts.ErrChatNameAlreadyExists, fmt.Errorf(consts.InternalChatNameExists)
+		}
+		return consts.ErrInternalServerError, err
+	}
+
+	return "", nil
 }

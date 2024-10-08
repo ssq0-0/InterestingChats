@@ -1,0 +1,21 @@
+{
+    "database": {
+      "host": "your_host",
+      "port": 5432,
+      "user": "your_username",
+      "password": "your_password",
+      "dbname": "your_db_name"
+    },
+    "kafka": {
+      "bootstrap_servers": "your_kafka_server",
+      "group_id": "message-group",
+      "auto_offset_reset": "latest",
+      "enable_auto_commit": true,
+      "auto_commit_interval_ms": 1000,
+      "topics": ["message_operation", "read_notification"]
+    },
+    "server": {
+      "port": 8002
+    }
+  }
+  

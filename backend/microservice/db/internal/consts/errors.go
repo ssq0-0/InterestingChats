@@ -1,5 +1,6 @@
 package consts
 
+// Internal error messages used by the server for logging and debugging.
 const (
 	ErrInternalServerError  = "Internal server error"
 	ErrInvalidValueFormat   = "Invalid value format"
@@ -26,11 +27,24 @@ const (
 	ErrIncorrectEmailOrPassword = "Incorrect email or password. Please check you input data"
 	ErrFailedVerifyUser         = "Failed to verify if the user exists"
 	ErrUserChatExists           = "Failed to verify the existence of the user in the chat room"
-	ErrUsernameAlredyExists     = "Failed to change username. This is your current username"
-	ErrEmailAlredyExists        = "Failed to change email. This is your current email"
+	ErrUsernameAlredyYouExists  = "Failed to change username. This is your current username"
+	ErrEmailAlredyYouExists     = "Failed to change email. This is your current email"
+	ErrEmailAlredyExists        = "Failed to change email. This is email is busy"
+
+	ErrRequestAlreadySent        = "Request already sent"
+	ErrAlreadyFriendship         = "You already have friendships with this user"
+	ErrFriendshipRequestNotFound = "Friendship request not found"
+	ErrFriendshipNotFound        = "Friendships not found"
+
+	ErrTagsNotFound             = "Tags not found"
+	ErrFailedInsertNotification = "Failed send notofication"
+
+	ErrChatNameAlreadyExists = "Chat name already exists"
 )
 
+// Error messages used for client-facing errors.
 const (
+	InternalServerError        = "internal server error"
 	InternalErrSelectInfo      = "failed to select info from db: %w"
 	InternalErrDelete          = "failed to delete from db: %w"
 	InternalErrFailedInsert    = "failed to insert into db: %w"
@@ -53,4 +67,10 @@ const (
 	InternalErrFailedRequest   = "invalid value format: %w"
 	InternalErrMissingURLVal   = "missing URL parametr"
 	InternalErrMissingParametr = "missing  parametr"
+
+	InternalErrToInsert     = "failed to insert request"
+	InternalFailedInsertTag = "failed to insert hastag: %v"
+	InternalTagAlreadySet   = "tag already set"
+
+	InternalChatNameExists = "chat name already exists"
 )

@@ -6,6 +6,7 @@ import (
 	"strconv"
 )
 
+// ConvertValue to convert a value from one type to another, for example, string to int or int to string.
 func ConvertValue[T any](value interface{}, result *T) (string, error) {
 	switch v := value.(type) {
 	case string:

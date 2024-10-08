@@ -1,10 +1,13 @@
 package models
 
-import "time"
+import (
+	"time"
+)
 
 type BaseUser struct {
-	Username string `json:"username"`
-	Email    string `json:"email"`
+	Username string  `json:"username"`
+	Email    string  `json:"email"`
+	Avatar   *string `json:"avatar"`
 }
 
 type User struct {
@@ -14,10 +17,16 @@ type User struct {
 }
 
 type Message struct {
-	ID   int       `json:"id"`
-	Body string    `json:"body"`
-	Time time.Time `json:"time"`
-	User User      `json:"user"`
+	ID     int       `json:"id"`
+	Body   string    `json:"body"`
+	Time   time.Time `json:"time"`
+	User   User      `json:"user"`
+	ChatID int       `json:"chat_id,omitempty"`
+}
+
+type Hashtag struct {
+	ID      int    `json:"id,omitempty"`
+	Hashtag string `json:"hashtag"`
 }
 
 type Chat struct {
@@ -34,11 +43,13 @@ type CreateChat struct {
 	ChatName string    `json:"chat_name"`
 	Members  []int     `json:"members"`
 	Messages []Message `json:"messages"`
+	Hashtags []Hashtag `json:"hashtags"`
 }
 
 type MemberRequest struct {
-	UserID int `json:"user_id"`
-	ChatID int `json:"chat_id"`
+	UserID  int      `json:"user_id"`
+	ChatID  int      `json:"chat_id"`
+	Options []string `json:"options,omitempty"`
 }
 
 type Response struct {
@@ -50,4 +61,37 @@ type ChangeUserData struct {
 	Type   string `json:"type"`
 	Data   string `json:"Data"`
 	UserID int    `json:"user_id"`
+}
+
+type UserFile struct {
+	UserID int          `json:"user_id"`
+	URL    FileResponse `json:"file_url"`
+}
+
+type FileResponse struct {
+	Errors        []string `json:"Errors"`
+	TemporaryLink string   `json:"temporary_url"`
+	StaticLink    string   `json:"static_url"`
+}
+
+type Notification struct {
+	ID       int
+	UserID   int
+	SenderID int
+	Type     string
+	Message  string
+	Time     time.Time
+	IsRead   bool
+}
+
+type NotificationRequest struct {
+	Sender   User
+	Receiver int
+}
+
+type FriendRequest struct {
+	UserID   int         `json:"user_id"`
+	FriendID int         `json:"friend_id"`
+	Friends  interface{} `json:"friend_list"`
+	Type     string      `json:"type"`
 }

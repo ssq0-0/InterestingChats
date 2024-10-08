@@ -1,18 +1,12 @@
-BINARY_NAME=DB
-CMD_DIR=./cmd
+.PHONY: up build down
 
-.PHONY: all build run deps clean
+IMAGE_NAME=db
 
-all: build
+up:
+	docker compose up --build
 
 build:
-	go build -o ${BINARY_NAME} ${CMD_DIR}
+	docker build -t $(IMAGE_NAME) .
 
-run: 
-	go run ${CMD_DIR}
-
-deps:
-	go mod tidy
-
-clean:
-	rm -f ${BINARY_NAME}
+down:
+	docker compose down
