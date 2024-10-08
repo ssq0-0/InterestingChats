@@ -1,0 +1,10 @@
+{
+    "server": {
+      "host": "0.0.0.0",
+      "port": "8009"
+    },
+    "jwt": {
+      "secret": "your_very_secure_secret"
+    }
+  }
+  
