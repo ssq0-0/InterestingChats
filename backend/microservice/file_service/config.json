@@ -1,0 +1,12 @@
+{
+    "server": {
+        "host": "0.0.0.0",
+        "port": "8005"
+    },
+    "minio": {
+        "endpoint": "storage.yandexcloud.net",
+        "access_key_id": "YCAJEG1yAQpkZi45pIzd7Oxqj",
+        "secret_access_key": "YCMc38di6R0T50M9Vhed9QF6oPiwLZ6gsU0-U62n",
+        "bucket_name": "chatsapp"
+    }
+}
