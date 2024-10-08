@@ -1,0 +1,22 @@
+{
+    "server": {
+      "host": "0.0.0.0",
+      "port": "8008"
+    },
+    "kafka": {
+      "bootstrap_servers": "your_kafka_server",
+      "group_id": "notification-group",
+      "auto_offset_reset": "earliest",
+      "enable_auto_commit": true,
+      "auto_commit_interval_ms": 1000,
+      "topics": ["friends_operation", "read_notification"]
+    },
+    "services": {
+      "db_service": {
+        "protocol": "http",
+        "host": "your_db_server",
+        "port": "your_db_port"
+      }
+    }
+  }
+  
