@@ -6,6 +6,8 @@ import (
 	"fmt"
 )
 
+// MapResponseDataToUser maps the response data to the user model.
+// If the data does not match the expected format, an error is returned.
 func MapResponseDataToUser(data interface{}, user *models.User) error {
 	responseData, ok := data.(map[string]interface{})
 	if !ok {
@@ -31,4 +33,13 @@ func MapResponseDataToUser(data interface{}, user *models.User) error {
 	}
 
 	return nil
+}
+
+// IsEmptyResponseData checks if the data is empty.
+// Returns true if the data is empty, otherwise false.
+func IsEmptyResponseData(data interface{}) bool {
+	if slice, ok := data.([]interface{}); ok {
+		return len(slice) == 0
+	}
+	return true
 }

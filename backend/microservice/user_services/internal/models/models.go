@@ -1,8 +1,11 @@
 package models
 
+import "time"
+
 type BaseUser struct {
-	Email    string `json:"email"`
-	Username string `json:"username"`
+	Email    string  `json:"email"`
+	Username string  `json:"username"`
+	Avatar   *string `json:"avatar"`
 }
 
 type User struct {
@@ -34,4 +37,37 @@ type ChangeUserData struct {
 	Type   string `json:"type"`
 	Data   string `json:"Data"`
 	UserID int    `json:"user_id"`
+}
+
+type UserFile struct {
+	UserID int          `json:"user_id"`
+	URL    FileResponse `json:"file_url"`
+}
+
+type FileResponse struct {
+	Errors        []string `json:"Errors"`
+	TemporaryLink string   `json:"temporary_url"`
+	StaticLink    string   `json:"static_url"`
+}
+
+type Notification struct {
+	ID       int
+	UserID   int
+	SenderID int
+	Type     string
+	Message  string
+	Time     time.Time
+	IsRead   bool
+}
+
+type NotificationRequest struct {
+	Sender   User
+	Receiver int
+}
+
+type FriendRequest struct {
+	UserID   int         `json:"user_id"`
+	FriendID int         `json:"friend_id"`
+	Friends  interface{} `json:"friend_list"`
+	Type     string      `json:"type"`
 }

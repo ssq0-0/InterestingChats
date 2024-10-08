@@ -12,6 +12,7 @@ require (
 require golang.org/x/sys v0.22.0 // indirect
 
 require (
+	github.com/confluentinc/confluent-kafka-go v1.9.2
 	github.com/felixge/httpsnoop v1.0.3 // indirect
 	github.com/sirupsen/logrus v1.9.3
 )

@@ -8,61 +8,52 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strconv"
 	"strings"
 )
 
-func GetMyProfile(r *http.Request, log logger.Logger) (*models.Response, int, string, error) {
-	userID, statusCode, clientErr := utils.ValidateJWT(strings.ReplaceAll(r.Header.Get("Authorization"), "Bearer ", ""))
-	if clientErr != "" {
-		return nil, statusCode, consts.ErrInvalidToken, fmt.Errorf(consts.InternalTokenInvalid)
-	}
-	if userID == 0 {
+func (us *userService) GetMyProfile(r *http.Request, log logger.Logger) (*models.Response, int, string, error) {
+	var userID int
+	if _, err := utils.ConvertValue(r.Header.Get("X-User-ID"), &userID); err != nil {
 		return nil, http.StatusUnauthorized, consts.ErrUserUnathorized, fmt.Errorf(consts.InternalTokenInvalid)
 	}
 
-	response, statusCode, clientErr, err := utils.ProxyRequest(consts.GET_Method, fmt.Sprintf(consts.DB_GetUserProfileInfo, userID), nil, http.StatusOK)
+	response, _, _, err := utils.ProxyRequest(consts.GET_Method, fmt.Sprintf(consts.CACHE_GetUserProfileInfo, userID), nil, http.StatusOK)
 	if err != nil {
-		return nil, statusCode, clientErr, err
+		response, statusCode, clientErr, err := utils.ProxyRequest(consts.GET_Method, fmt.Sprintf(consts.DB_GetUserProfileInfo, userID), nil, http.StatusOK)
+		if err != nil {
+			return nil, statusCode, clientErr, err
+		}
+		if err := us.producer.Writer(response.Data, consts.KAFKA_Session); err != nil {
+			return nil, 400, "", err
+		}
+		return response, http.StatusOK, "", nil
 	}
 
 	return response, http.StatusOK, "", nil
 }
 
-func GetUserInfo(r *http.Request, log logger.Logger) (*models.Response, int, string, error) {
-	requestUserID, statusCode, clientErr := utils.ValidateJWT(strings.ReplaceAll(r.Header.Get("Authorization"), "Bearer ", ""))
-	if clientErr != "" {
-		return nil, statusCode, consts.ErrInvalidToken, fmt.Errorf(consts.InternalTokenInvalid)
-	}
-	if requestUserID == 0 {
+func (us *userService) GetUserInfo(r *http.Request, log logger.Logger) (*models.Response, int, string, error) {
+	var reqUserID int
+	if _, err := utils.ConvertValue(r.URL.Query().Get("userID"), &reqUserID); err != nil {
 		return nil, http.StatusUnauthorized, consts.ErrUserUnathorized, fmt.Errorf(consts.InternalTokenInvalid)
 	}
 
-	userID, err := strconv.Atoi(strings.ReplaceAll(r.URL.Query().Get("userID"), " ", ""))
+	response, _, _, err := utils.ProxyRequest(consts.GET_Method, fmt.Sprintf(consts.CACHE_GetUserProfileInfo, reqUserID), nil, http.StatusOK)
 	if err != nil {
-		return nil, http.StatusBadRequest, consts.ErrInternalServer, fmt.Errorf(consts.InternalTokenInvalid)
+		response, statusCode, clientErr, err := utils.ProxyRequest(consts.GET_Method, fmt.Sprintf(consts.DB_GetUserProfileInfo, reqUserID), nil, http.StatusOK)
+		if err != nil {
+			return nil, statusCode, clientErr, err
+		}
+		if err := us.producer.Writer(response.Data, consts.KAFKA_Session); err != nil {
+			return nil, 400, "", err
+		}
+		return response, http.StatusOK, "", nil
 	}
 
-	log.Infof("req id %d and user id %d", requestUserID, userID)
-	response, statusCode, clientErr, err := utils.ProxyRequest(consts.GET_Method, fmt.Sprintf(consts.DB_GetUserProfileInfo, userID), nil, http.StatusOK)
-	if err != nil {
-		log.Errorf("err: %v", err)
-		return nil, statusCode, clientErr, err
-	}
-
-	log.Infof("resp %+v", response)
 	return response, http.StatusOK, "", nil
 }
 
-func GetSearchUserResult(r *http.Request) (*models.Response, int, string, error) {
-	requestUserID, statusCode, clientErr := utils.ValidateJWT(strings.ReplaceAll(r.Header.Get("Authorization"), "Bearer ", ""))
-	if clientErr != "" {
-		return nil, statusCode, consts.ErrInvalidToken, fmt.Errorf(consts.InternalTokenInvalid)
-	}
-	if requestUserID == 0 {
-		return nil, http.StatusUnauthorized, consts.ErrUserUnathorized, fmt.Errorf(consts.InternalTokenInvalid)
-	}
-
+func (us *userService) GetSearchUserResult(r *http.Request) (*models.Response, int, string, error) {
 	symbols := r.URL.Query().Get("symbols")
 	if strings.ReplaceAll(symbols, " ", "") == "" {
 		return nil, http.StatusBadRequest, consts.ErrMissingParametr, fmt.Errorf(consts.InternalMissingParametr)
@@ -75,5 +66,4 @@ func GetSearchUserResult(r *http.Request) (*models.Response, int, string, error)
 	}
 
 	return repsonse, http.StatusOK, "", nil
-
 }

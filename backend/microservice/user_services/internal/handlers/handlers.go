@@ -6,25 +6,27 @@ import (
 	"InterestingChats/backend/user_services/internal/models"
 	"InterestingChats/backend/user_services/internal/services"
 	"InterestingChats/backend/user_services/internal/utils"
-	"encoding/json"
-	"fmt"
 	"log"
-	"strings"
 
 	"net/http"
 )
 
-type UserService struct {
+// Handler handles all user-related operations.
+type Handler struct {
+	US  services.UserService
 	log logger.Logger
 }
 
-func NewService(log logger.Logger) *UserService {
-	return &UserService{
+// NewService creates a new instance of Handler with a logger.
+func NewService(log logger.Logger, us services.UserService) *Handler {
+	return &Handler{
+		US:  us,
 		log: log,
 	}
 }
 
-func (h *UserService) Registrations(w http.ResponseWriter, r *http.Request) {
+// Registrations handles user registration.
+func (h *Handler) Registrations(w http.ResponseWriter, r *http.Request) {
 	user, err := utils.ValideUserData(r, consts.VALDIDATION_RegistrationType)
 	if err != nil {
 		h.HandleError(w, http.StatusBadRequest, []string{err.Error()}, err)
@@ -37,13 +39,12 @@ func (h *UserService) Registrations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokens, userInfo, clientErr, err := services.UserRequest(consts.POST_Method, consts.DB_Registration, user, http.StatusCreated)
+	tokens, userInfo, clientErr, err := h.US.UserRequest(consts.POST_Method, consts.DB_Registration, user, http.StatusCreated)
 	if err != nil {
-		h.HandleError(w, http.StatusBadRequest, clientErr, err)
+		h.HandleError(w, http.StatusBadRequest, []string{clientErr}, err)
 		return
 	}
 
-	h.log.Infof("successful registred user: %+v", user.Email)
 	h.SendRespond(w, http.StatusCreated, &models.Response{
 		Data: models.AuthResponse{
 			Tokens: tokens.Tokens,
@@ -53,16 +54,16 @@ func (h *UserService) Registrations(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *UserService) Login(w http.ResponseWriter, r *http.Request) {
+// Login handles user login.
+func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	user, err := utils.ValideUserData(r, consts.VALDIDATION_LoginType)
 	if err != nil {
 		h.HandleError(w, http.StatusBadRequest, []string{consts.ErrUnexpectedValueFormat}, err)
 		return
 	}
-
-	tokens, userInfo, clientErr, err := services.UserRequest(consts.POST_Method, consts.DB_Login, user, http.StatusOK)
+	tokens, userInfo, clientErr, err := h.US.UserRequest(consts.POST_Method, consts.DB_Login, user, http.StatusOK)
 	if err != nil {
-		h.HandleError(w, http.StatusBadRequest, clientErr, err)
+		h.HandleError(w, http.StatusBadRequest, []string{clientErr}, err)
 		return
 	}
 
@@ -76,8 +77,9 @@ func (h *UserService) Login(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *UserService) GetMyProfile(w http.ResponseWriter, r *http.Request) {
-	response, statusCode, clientErr, err := services.GetMyProfile(r, h.log)
+// GetMyProfile retrieves the logged-in user's profile.
+func (h *Handler) GetMyProfile(w http.ResponseWriter, r *http.Request) {
+	response, statusCode, clientErr, err := h.US.GetMyProfile(r, h.log)
 	if err != nil {
 		h.HandleError(w, statusCode, []string{clientErr}, err)
 		return
@@ -86,8 +88,9 @@ func (h *UserService) GetMyProfile(w http.ResponseWriter, r *http.Request) {
 	h.SendRespond(w, http.StatusOK, response)
 }
 
-func (h *UserService) GetUserProfile(w http.ResponseWriter, r *http.Request) {
-	response, statusCode, clientErr, err := services.GetUserInfo(r, h.log)
+// GetUserProfile retrieves another user's profile.
+func (h *Handler) GetUserProfile(w http.ResponseWriter, r *http.Request) {
+	response, statusCode, clientErr, err := h.US.GetUserInfo(r, h.log)
 	if err != nil {
 		h.HandleError(w, statusCode, []string{clientErr}, err)
 		return
@@ -96,8 +99,9 @@ func (h *UserService) GetUserProfile(w http.ResponseWriter, r *http.Request) {
 	h.SendRespond(w, http.StatusOK, response)
 }
 
-func (h *UserService) GetSearchUserResult(w http.ResponseWriter, r *http.Request) {
-	response, statusCode, clientErr, err := services.GetSearchUserResult(r)
+// GetSearchUserResult handles searching for users.
+func (h *Handler) GetSearchUserResult(w http.ResponseWriter, r *http.Request) {
+	response, statusCode, clientErr, err := h.US.GetSearchUserResult(r)
 	if err != nil {
 		h.HandleError(w, statusCode, []string{clientErr}, err)
 		return
@@ -106,14 +110,10 @@ func (h *UserService) GetSearchUserResult(w http.ResponseWriter, r *http.Request
 	h.SendRespond(w, http.StatusOK, response)
 }
 
-// TODO: add user request verification √
-func (h *UserService) ChangeUserData(w http.ResponseWriter, r *http.Request) {
-	// TODO: change '_' to response. Use response.Errors in errorhandler √
-
-	response, statusCode, clientErr, err := services.ChangeUserData(r)
+// ChangeUserData allows the user to update their information.
+func (h *Handler) ChangeUserData(w http.ResponseWriter, r *http.Request) {
+	response, statusCode, clientErr, err := h.US.ChangeUserData(r)
 	if err != nil {
-		log.Printf("here: %v", err)
-
 		h.HandleError(w, statusCode, []string{clientErr}, err)
 		return
 	}
@@ -124,71 +124,81 @@ func (h *UserService) ChangeUserData(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *UserService) GetTokens(w http.ResponseWriter, r *http.Request) {
-	email := r.URL.Query().Get("email")
-	if email == "" {
-		h.HandleError(w, http.StatusBadRequest, []string{consts.ErrMissingParametr}, fmt.Errorf(consts.InternalMissingParametr))
-		return
-	}
-
-	redisResponse, statusCode, clientErr, err := utils.ProxyRequest(consts.GET_Method, fmt.Sprintf(consts.Redis_GetToken, email), nil, http.StatusOK)
+// UploadAvatar allows the user to upload their avatar.
+func (h *Handler) UploadAvatar(w http.ResponseWriter, r *http.Request) {
+	log.Printf("получен запрос")
+	response, statusCode, clientErr, err := h.US.AddUserAvatar(r)
 	if err != nil {
 		h.HandleError(w, statusCode, []string{clientErr}, err)
 		return
 	}
 
-	redisResponseBytes, ok := redisResponse.Data.([]byte)
-	if !ok {
-		h.HandleError(w, http.StatusBadGateway, []string{consts.ErrInvalidValueFormat}, fmt.Errorf("unexpected data format"))
-		return
-	}
-
-	var tokens models.Tokens
-	if err := json.Unmarshal(redisResponseBytes, &tokens); err != nil {
-		h.HandleError(w, http.StatusBadGateway, []string{consts.ErrInvalidValueFormat}, err)
-		return
-	}
-
-	h.SendRespond(w, http.StatusOK, &models.Response{
-		Errors: nil,
-		Data:   tokens,
-	})
+	h.SendRespond(w, http.StatusOK, response)
 }
 
-func (h *UserService) CheckTokens(w http.ResponseWriter, r *http.Request) {
-	token := r.URL.Query().Get("token")
-	if token == "" {
-		h.HandleError(w, http.StatusBadRequest, []string{consts.ErrMissingParametr}, fmt.Errorf(consts.InternalMissingParametr))
-		return
-	}
-
-	id, statusCode, err := utils.ValidateJWT(token)
-	if err != "" {
-		h.HandleError(w, statusCode, []string{err}, fmt.Errorf(err))
-		return
-	}
-
-	h.SendRespond(w, http.StatusOK, &models.Response{
-		Errors: nil,
-		Data:   id,
-	})
-}
-
-func (h *UserService) RefreshAccessToken(w http.ResponseWriter, r *http.Request) {
-	refreshToken := r.URL.Query().Get("refreshToken")
-	if strings.ReplaceAll(refreshToken, " ", "") == "" {
-		h.HandleError(w, http.StatusUnauthorized, []string{consts.ErrUserUnathorized}, fmt.Errorf(consts.InternalTokenInvalid))
-		return
-	}
-
-	newAccessToken, clientErr, err := utils.RefreshToken(refreshToken)
+// Friend request operations
+// RequestToFriendShip sends a friend request.
+func (h *Handler) RequestToFriendShip(w http.ResponseWriter, r *http.Request) {
+	response, statusCode, clientErr, err := h.US.FriendsOperations(r, consts.FRIENDSHIP_RequestType)
 	if err != nil {
-		h.HandleError(w, http.StatusUnauthorized, []string{clientErr}, err)
+		h.HandleError(w, statusCode, []string{clientErr}, err)
 		return
 	}
 
-	h.SendRespond(w, http.StatusOK, &models.Response{
-		Errors: nil,
-		Data:   newAccessToken,
-	})
+	h.SendRespond(w, http.StatusOK, response)
+}
+
+// AcceptFriendShip accepts a friend request.
+func (h *Handler) AcceptFriendShip(w http.ResponseWriter, r *http.Request) {
+	response, statusCode, clientErr, err := h.US.FriendsOperations(r, consts.FRIENDSHIP_AcceptType)
+	if err != nil {
+		h.HandleError(w, statusCode, []string{clientErr}, err)
+		return
+	}
+
+	h.SendRespond(w, http.StatusOK, response)
+}
+
+// DeleteFriend removes a user from the friend list.
+func (h *Handler) DeleteFriend(w http.ResponseWriter, r *http.Request) {
+	response, statusCode, clientErr, err := h.US.FriendsOperations(r, consts.FRIENDSHIP_DeleteFriendType)
+	if err != nil {
+		h.HandleError(w, statusCode, []string{clientErr}, err)
+		return
+	}
+
+	h.SendRespond(w, http.StatusOK, response)
+}
+
+// DeleteFriendRequest cancels a friend request.
+func (h *Handler) DeleteFriendRequest(w http.ResponseWriter, r *http.Request) {
+	response, statusCode, clientErr, err := h.US.FriendsOperations(r, consts.FRIENDSHIP_DeleteFriendRequestType)
+	if err != nil {
+		h.HandleError(w, statusCode, []string{clientErr}, err)
+		return
+	}
+
+	h.SendRespond(w, http.StatusOK, response)
+}
+
+// GetFriends retrieves the list of user's friends.
+func (h *Handler) GetFriends(w http.ResponseWriter, r *http.Request) {
+	response, statusCode, clientErr, err := h.US.FriendsOperations(r, consts.FRIENDSHIP_GetFriendsType)
+	if err != nil {
+		h.HandleError(w, statusCode, []string{clientErr}, err)
+		return
+	}
+
+	h.SendRespond(w, http.StatusOK, response)
+}
+
+// GetSubscribers retrieves the list of user's subscribers.
+func (h *Handler) GetSubscribers(w http.ResponseWriter, r *http.Request) {
+	response, statusCode, clientErr, err := h.US.FriendsOperations(r, consts.FRIENDSHIP_GetSubsType)
+	if err != nil {
+		h.HandleError(w, statusCode, []string{clientErr}, err)
+		return
+	}
+
+	h.SendRespond(w, http.StatusOK, response)
 }

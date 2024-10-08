@@ -8,6 +8,8 @@ import (
 	"net/http"
 )
 
+// ValideUserData checks the user data in the request against the validation type.
+// Returns the user model or an error if something goes wrong
 func ValideUserData(r *http.Request, validationType int) (models.User, error) {
 	var user models.User
 	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
@@ -15,11 +17,11 @@ func ValideUserData(r *http.Request, validationType int) (models.User, error) {
 	}
 
 	switch validationType {
-	case 0:
+	case consts.VALDIDATION_RegistrationType:
 		if user.Email == "" || user.Username == "" || user.Password == "" {
 			return models.User{}, fmt.Errorf(consts.InternalMissingParametr)
 		}
-	case 1:
+	case consts.VALDIDATION_LoginType:
 		if user.Email == "" || user.Password == "" {
 			return models.User{}, fmt.Errorf(consts.InternalMissingParametr)
 		}

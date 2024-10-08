@@ -1,0 +1,26 @@
+{
+    "server": {
+      "host": "0.0.0.0",
+      "port": "8001"
+    },
+    "kafka": {
+      "bootstrap_servers": "your_kafka_server",
+      "topics": {
+        "friends_operation": "friends_operation",
+        "session_set": "session_SET",
+        "session_update": "session_UPDATE",
+        "push_friends": "push_friends",
+        "push_subscribers": "push_subscribers",
+        "update_subscriber": "update_subscriber",
+        "update_friend": "update_friend",
+        "update_user_data": "update_user_data"
+      }
+    },
+    "services": {
+      "db_service": "your_db_server",
+      "file_service": "your_file_server",
+      "auth_service": "your_auth_server",
+      "cache_service": "your_cache_server"
+    }
+  }
+  

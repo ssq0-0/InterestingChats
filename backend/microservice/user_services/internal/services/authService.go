@@ -9,31 +9,42 @@ import (
 	"strings"
 )
 
-func UserRequest(method, url string, user models.User, expectedStatusCode int) (*models.UserTokens, *models.User, []string, error) {
+func (us *userService) UserRequest(method, url string, user models.User, expectedStatusCode int) (*models.UserTokens, *models.User, string, error) {
 	response, _, clientErr, err := utils.ProxyRequest(method, url, user, expectedStatusCode)
 	if err != nil {
-		return nil, nil, []string{clientErr}, err
+		return nil, nil, clientErr, err
 	}
 
 	if len(response.Errors) > 0 {
 		resErrors := strings.Join(response.Errors, "; ")
-		return nil, nil, response.Errors, fmt.Errorf(resErrors)
+		return nil, nil, resErrors, fmt.Errorf(resErrors)
 	}
 
 	var userResponseInfo models.User
 	if err := utils.MapResponseDataToUser(response.Data, &userResponseInfo); err != nil {
-		return nil, nil, []string{consts.ErrInvalidValueFormat}, err
+		return nil, nil, consts.ErrInvalidValueFormat, err
 	}
 
-	userTokens, err := GetORSetToken(userResponseInfo, consts.POST_Method, consts.Redis_SetToken, http.StatusOK)
+	response, _, _, err = utils.ProxyRequest(consts.POST_Method, consts.AS_GenerateTokens, userResponseInfo, http.StatusOK)
 	if err != nil {
-		return nil, nil, []string{consts.ErrInternalServer}, err
+		return nil, nil, consts.ErrInternalServer, err
 	}
 
-	tokens, ok := userTokens[userResponseInfo.Email]
+	tokensData, ok := response.Data.(map[string]interface{})
 	if !ok {
-		return nil, nil, []string{consts.ErrUnexpectedRecivedEmail}, fmt.Errorf(consts.InternalUserEmailInToken)
+		return nil, nil, "Invalid token response format", fmt.Errorf("expected map[string]interface{}")
 	}
 
-	return &tokens, &userResponseInfo, nil, nil
+	tokensMap, ok := tokensData["tokens"].(map[string]interface{})
+	if !ok {
+		return nil, nil, "Invalid tokens format", fmt.Errorf("expected tokens as map[string]interface{}")
+	}
+
+	tokens := models.Tokens{
+		AccessToken:  tokensMap["accessToken"].(string),
+		RefreshToken: tokensMap["refreshToken"].(string),
+	}
+
+	userTokens := &models.UserTokens{Tokens: tokens}
+	return userTokens, &userResponseInfo, "", nil
 }

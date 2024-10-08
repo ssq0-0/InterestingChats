@@ -7,6 +7,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// HashPassword accepts a password and returns its hash created with bcrypt.
+// If an error occurs while creating the hash, it is returned along with an empty string.
 func HashPassword(password string) (string, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {

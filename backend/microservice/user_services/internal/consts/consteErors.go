@@ -1,5 +1,6 @@
 package consts
 
+// Internal error messages used by the server for logging and debugging.
 const (
 	ErrInternalServer     = "Internal error server"
 	ErrInvalidValueFormat = "Invalid value format"
@@ -15,8 +16,10 @@ const (
 	ErrUnexpectedStatucCode   = "Unexpected status code received"
 	ErrUnexpectedValueFormat  = "Unexpected value format"
 	ErrUnexpectedRecivedEmail = "Unexpected recived email"
+	ErrUnsupportedType        = "Unsuported value"
 )
 
+// Error messages used for client-facing errors.
 const (
 	InternalMissingParametr      = "missing parametr"
 	InternalFailedProxyRequest   = "proxy request error: %w"
