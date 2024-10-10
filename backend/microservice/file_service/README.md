@@ -4,11 +4,13 @@ A file management service for saving and deleting images using MinIO as the obje
 
 ## Table of Contents
 
-- [Prerequisites](#prerequisites)
-- [Installation](#installation)
-- [Configuration](#configuration)
-- [Usage](#usage)
-- [API Endpoints](#api-endpoints)
+- [Overview](#overview)
+- [Features](#features)
+- [Getting Started](#getting-started)
+  - [Prerequisites](#prerequisites)
+  - [Installation](#installation)
+- [API](#api)
+- [Contributing](#contributing)
 - [License](#license)
 - 
 ## Features
