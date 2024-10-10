@@ -154,5 +154,4 @@ Contributions are welcome! Please follow these steps to contribute:
 5. Open a Pull Request.
 
 ## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](https://github.com/ssq0-0/InterestingChats/blob/main/backend/microservice/LICENSE) file for details.
