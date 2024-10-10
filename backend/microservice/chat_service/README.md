@@ -1,3 +1,4 @@
+# Chat Service
 ## Overview
 
 This service is a WebSocket-based chat server with Kafka integration to handle messages. The server manages multiple chat rooms, allowing users to join, send messages, and interact in real-time. Kafka is used to ensure reliable message handling and persistence.
