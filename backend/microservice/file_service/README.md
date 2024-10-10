@@ -28,7 +28,7 @@ A file management service for saving and deleting images using MinIO as the obje
 
 ```bash
    git clone https://github.com/ssq0-0/InterestingChats.git
-   cd InterestingChats/backend/microservice/chat_service
+   cd InterestingChats/backend/microservice/file_service
 ```
 
 2. Set up your environment: Make sure you have Docker and Make installed. Verify your Docker installation by running:
